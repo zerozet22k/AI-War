@@ -1,0 +1,14 @@
+.compile-status {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.compile-status--ok {
+  color: #4ade80;
+}
+
+.compile-status--error {
+  color: #f87171;
+  font-weight: 500;
+}

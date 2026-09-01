@@ -1,0 +1,5949 @@
+// Ironclad Union: absorb pressure behind durable armor, then advance as a
+// repaired combined-arms formation with tanks screening calibrated artillery.
+let phase = 0;
+let requiredArmy = 16;
+let nextFabricatorTrain = 0;
+let nextBarracksTrain = 0;
+let nextFactoryTrain = 0;
+let nextNavalTrain = 0;
+let nextBuildAttempt = 0;
+let nextResearchAttempt = 0;
+let nextArmyOrder = 0;
+let nextCombatMicro = 0;
+let attackDeadline = 210;
+let regroupUntil = 0;
+let groupingStarted = 0;
+let groupingDeadline = 0;
+let groupingTargetCount = 0;
+let stagingX = 0;
+let stagingY = 0;
+let supportLaunchUntil = 0;
+let launchPower = 0;
+let launchCount = 0;
+let lossesAtLaunch = 0;
+let infantryCycle = 0;
+let factoryCycle = 0;
+let navalCycle = 0;
+let kiteStep = 0;
+
+let defenseUntil = 0;
+let defenseX = 0;
+let defenseY = 0;
+let defenseTarget = "";
+let rememberedWorkerAttacker = "";
+let rememberedBaseAttacker = "";
+let workerDefenseUntil = 0;
+let workerThreatX = 0;
+let workerThreatY = 0;
+let watchedWorker = "";
+let watchedWorkerHealth = 1;
+
+let knownMineCount = 0;
+let coveredMineCount = 0;
+let bestExpansionNode = "";
+let economyGuardX = 0;
+let economyGuardY = 0;
+let nextMineScan = 0;
+let waterChecked = false;
+let waterAvailable = false;
+
+let baseThreat = 0;
+let baseThreatX = 0;
+let baseThreatY = 0;
+let baseThreatTarget = "";
+let workerThreat = 0;
+let assetThreat = 0;
+let assetThreatX = 0;
+let assetThreatY = 0;
+let assetThreatTarget = "";
+let armyThreat = 0;
+let armyThreatX = 0;
+let armyThreatY = 0;
+let armyThreatTarget = "";
+let emergencyNow = false;
+let emergencyActive = false;
+let currentPower = 0;
+let finishing = false;
+
+// Direction-of-attack memory: every attacker actually seen threatening the
+// base/a worker/the army nudges a running estimate of "which way trouble
+// keeps coming from" — a real signal for where the enemy's base probably
+// is, well before it's actually been scouted (see noteEnemyDirection()).
+let inferredEnemyDirX = 0;
+let inferredEnemyDirY = 0;
+let inferredEnemyObservations = 0;
+
+// Battle-outcome memory: whether recent attack waves (see launchAttack()/
+// attackCollapsed()/runBuildingCleanup()) have been winning or losing lately,
+// so the army's willingness to commit through resistance adjusts with its
+// own recent track record instead of reacting identically to every fight
+// regardless of how the last several actually went.
+let recentBattleOutcomes = [];
+let battleWinStreak = 0;
+let battleLossStreak = 0;
+let battleOutcomeRecorded = false;
+
+// Strategic director state.
+let strategicTick = 0;
+let skillTick = 0;
+let expansionTick = 0;
+let economyTick = 0;
+let attritionTick = 0;
+let builderSafetyTick = 0;
+let reserveResources = 0;
+let economyMode = 0;
+let pressureMode = 0;
+let enemyPressure = 0;
+let friendlyLocalPower = 0;
+let enemyLocalPower = 0;
+let localPowerRatio = 1;
+// Whole-army stats — every visible enemy unit, not just whichever are near
+// the current front (that's localPowerRatio above). Answers "is the enemy's
+// entire visible force crumbling", which the local skirmish alone can't:
+// the front might look even while their army is broken everywhere else, or
+// look bad while reinforcements are actually running out. See
+// updateGlobalBattleModel() and pursuitMode below.
+let friendlyGlobalPower = 0;
+let enemyGlobalPower = 0;
+let globalPowerRatio = 1;
+let pursuitMode = false;
+let retreatThreshold = 0.20;
+// How favorable the local fight needs to be (friendly power / enemy power)
+// before the army pushes through a blocker instead of holding at its
+// current spot — see objectiveDecision(). Ironclad sits in the middle of
+// the three races on retreatThreshold above, and commits the same way: a
+// measured, deliberate press once the fight is genuinely in its favor,
+// neither the earliest to back off nor the last.
+let combatCommitThreshold = 1.0;
+let formationX = 0;
+let formationY = 0;
+let formationFacingX = 0;
+let formationFacingY = 0;
+let expansionCandidate = "";
+let expansionCandidateX = 0;
+let expansionCandidateY = 0;
+let expansionDanger = 0;
+let lastExpansionAttempt = 0;
+let lastExpansionCount = 0;
+let stalledExpansionUntil = 0;
+let lastGatheredSnapshot = 0;
+let lastGatheredTime = 0;
+let incomeRate = 0;
+let armyHealthScore = 1;
+let damagedArmyCount = 0;
+let healthyArmyCount = 0;
+let lastUnitsLostSnapshot = 0;
+let recentLosses = 0;
+let lossWindowTime = 0;
+let aggressionBudget = 0;
+let desiredFrontline = 0;
+let desiredRanged = 0;
+let desiredSupport = 0;
+let desiredAir = 0;
+let desiredNaval = 0;
+let enemyLightBias = 0;
+let enemyArmorBias = 0;
+let enemyAirBias = 0;
+let enemyStructureBias = 0;
+let safeToSpend = false;
+let safeToExpand = false;
+let safeToResearch = false;
+let safeToTech = false;
+let mapDiagonal = 0;
+let enemyBaseDistance = 0;
+let abilityUses = 0;
+let focusOrders = 0;
+let retreatOrders = 0;
+let waterScanCount = 0;
+let nextWaterScan = 0;
+let waterSampleHits = 0;
+let navalMode = 0;
+let navalObjectiveX = 0;
+let navalObjectiveY = 0;
+let navalObjectiveUntil = 0;
+let navalRetreatUntil = 0;
+let navalRallyX = 0;
+let navalRallyY = 0;
+let chaseAnchorX = 0;
+let chaseAnchorY = 0;
+let chaseLeash = 125;
+let decisionMode = 0;
+let decisionUntil = 0;
+let objectiveX = 0;
+let objectiveY = 0;
+let objectiveStarted = 0;
+let objectiveLastDistance = 0;
+let objectiveProgressTime = 0;
+let objectiveStalled = false;
+let blockerTarget = "";
+let blockerUntil = 0;
+let holdUntil = 0;
+let disengageUntil = 0;
+let cleanupMode = false;
+let cleanupTarget = "";
+let cleanupTargetX = 0;
+let cleanupTargetY = 0;
+let cleanupTargetUntil = 0;
+let cleanupSearchUntil = 0;
+let cleanupPasses = 0;
+let lastVisibleBuildingCount = 0;
+let rejectedExpansionNode = "";
+let rejectedExpansionUntil = 0;
+let expansionEscortRequired = 8;
+let expansionSafetyMargin = 85;
+let unsafeOutpostX = 0;
+let unsafeOutpostY = 0;
+let unsafeOutpostUntil = 0;
+let pendingExpansionNode = "";
+let pendingExpansionX = 0;
+let pendingExpansionY = 0;
+let pendingExpansionStarted = 0;
+let pendingExpansionUntil = 0;
+let pendingExpansionGuardUntil = 0;
+let pendingExpansionFailures = 0;
+let pendingExpansionProgress = 0;
+let expansionCoverageRadius = 320;
+let desiredArmyCap = 42;
+let productionCapUntil = 0;
+let desiredWarden = 6;
+let desiredBreaker = 3;
+let desiredLongshot = 3;
+let desiredMedic = 1;
+let lancerEmergencyNeed = 0;
+let compositionTick = 0;
+let infantryProductionMode = 0;
+let researchReserve = 0;
+let pendingExpansionLastProgress = 0;
+let pendingExpansionProgressTime = 0;
+let expansionSavingsActive = false;
+let expansionSavingsNode = "";
+let expansionSavingsTarget = 0;
+let expansionSavingsUntil = 0;
+let expansionOpportunityTick = 0;
+let expansionOpportunityCount = 0;
+let expansionDecisionValue = 0;
+let expansionDecisionThreshold = 58;
+let coveredCrystalTotal = 0;
+let productiveCoveredNodes = 0;
+let averageCoveredCrystals = 0;
+let expansionDecisionTick = 0;
+let expansionDecisionNode = "";
+let expansionDecisionApproved = false;
+let cargoReturnTick = 0;
+let loadedFabricatorCount = 0;
+let emptyIdleFabricatorCount = 0;
+let nearestDropoffX = 0;
+let nearestDropoffY = 0;
+let miningOrdersIssued = 0;
+let cargoRescueOrders = 0;
+let miningManagerTick = 0;
+let economicCrisis = false;
+let economicWarning = false;
+let crystalRunway = 0;
+let expansionConnectionRadius = 280;
+let replacementScoutUrgent = false;
+let brainGoal = 0;
+let brainPreviousGoal = 0;
+let brainBestGoal = 0;
+let brainBestScore = -99999;
+let brainGoalScore = 0;
+let brainGoalStarted = 0;
+let brainProgressTime = 0;
+let brainLastResources = 0;
+let brainLastArmy = 0;
+let brainLastBuildings = 0;
+let brainLastKnownNodes = 0;
+let brainStalled = false;
+let scoreDefend = 0;
+let scoreEconomy = 0;
+let scoreExpand = 0;
+let scoreScout = 0;
+let scoreBuild = 0;
+let scoreTech = 0;
+let scoreAttack = 0;
+let scoreRecover = 0;
+let scoreCleanup = 0;
+let scoreNaval = 0;
+let brainCandidateNode = "";
+let brainVisibleBuildings = 0;
+let brainKnownUsefulNodes = 0;
+let brainUncoveredNodes = 0;
+let brainThreatLevel = 0;
+let brainKnowledgeNeed = 0;
+let brainArmyReadiness = 0;
+let brainEconomyHealth = 0;
+let brainCurrentGoalBonus = 70;
+let hotRecoveryExpansionTick = 0;
+let hotRecoveryNode = "";
+let hotRecoveryScore = 999999;
+let hotRecoveryCandidateScore = 0;
+
+function strategicDistanceScale() {
+    let width = 0;
+    let height = 0;
+    let diagonal = 0;
+
+    width = mapWidth();
+    height = mapHeight();
+    diagonal = width + height;
+
+    if (diagonal < 300) {
+        diagonal = 300;
+    }
+
+    return diagonal;
+}
+
+function updateIncomeModel() {
+    let now = 0;
+    let gathered = 0;
+    let elapsed = 0;
+    let gained = 0;
+
+    now = gameTime();
+
+    if (now < economyTick) {
+        return;
+    }
+
+    gathered = resourcesGathered();
+
+    if (lastGatheredTime <= 0) {
+        lastGatheredTime = now;
+        lastGatheredSnapshot = gathered;
+        incomeRate = 0;
+        economyTick = now + 5;
+        return;
+    }
+
+    elapsed = now - lastGatheredTime;
+    gained = gathered - lastGatheredSnapshot;
+
+    if (elapsed > 0) {
+        incomeRate = gained / elapsed;
+    }
+
+    lastGatheredTime = now;
+    lastGatheredSnapshot = gathered;
+    economyTick = now + 7;
+}
+
+function updateLossModel() {
+    let now = 0;
+    let losses = 0;
+    let delta = 0;
+
+    now = gameTime();
+
+    if (now < attritionTick) {
+        return;
+    }
+
+    losses = unitsLost();
+    delta = losses - lastUnitsLostSnapshot;
+
+    if (delta < 0) {
+        delta = 0;
+    }
+
+    if (lossWindowTime <= 0) {
+        recentLosses = 0;
+    } else {
+        if (now - lossWindowTime > 35) {
+            recentLosses = 0;
+        }
+    }
+
+    if (delta > 0) {
+        recentLosses = recentLosses + delta;
+        lossWindowTime = now;
+    }
+
+    lastUnitsLostSnapshot = losses;
+    attritionTick = now + 3;
+}
+
+function calculateArmyHealth() {
+    let totalRatio = 0;
+    let number = 0;
+    let damaged = 0;
+    let healthy = 0;
+
+    totalRatio = 0;
+    number = 0;
+    damaged = 0;
+    healthy = 0;
+
+    for (id in mainFighters()) {
+        if (unitExists(id)) {
+            totalRatio = totalRatio + unitHealthRatio(id);
+            number = number + 1;
+
+            if (unitHealthRatio(id) < 0.48) {
+                damaged = damaged + 1;
+            } else {
+                healthy = healthy + 1;
+            }
+        }
+    }
+
+    damagedArmyCount = damaged;
+    healthyArmyCount = healthy;
+
+    if (number <= 0) {
+        armyHealthScore = 1;
+        return 1;
+    }
+
+    armyHealthScore = totalRatio / number;
+    return armyHealthScore;
+}
+
+function powerOfEnemyList(list) {
+    let power = 0;
+    let hpWeight = 0;
+    let rangeWeight = 0;
+
+    power = 0;
+
+    for (enemy in list) {
+        if (unitExists(enemy)) {
+            hpWeight = unitHealthRatio(enemy);
+            rangeWeight = unitAttackRange(enemy);
+
+            if (rangeWeight > 70) {
+                power = power + unitAttack(enemy) + 8;
+            } else {
+                power = power + unitAttack(enemy) + 3;
+            }
+
+            if (hpWeight > 0.75) {
+                power = power + 4;
+            }
+        }
+    }
+
+    return power;
+}
+
+function powerOfFriendlyList(list) {
+    let power = 0;
+
+    power = totalAttack(list);
+    power = power + count(list) * 3;
+
+    return power;
+}
+
+function updateLocalBattleModel() {
+    let centerX = 0;
+    let centerY = 0;
+    let anchor = "";
+    let friends = 0;
+    let enemies = 0;
+
+    centerX = baseX();
+    centerY = baseY();
+    anchor = closestUnitTo(mainFighters(), enemyBaseX(), enemyBaseY());
+
+    if (anchor != "" && unitExists(anchor)) {
+        centerX = unitX(anchor);
+        centerY = unitY(anchor);
+    }
+
+    friends = powerOfFriendlyList(unitsNear(centerX, centerY, 155));
+    enemies = powerOfEnemyList(enemyUnitsNear(centerX, centerY, 165));
+
+    friendlyLocalPower = friends;
+    enemyLocalPower = enemies;
+
+    if (enemies <= 0) {
+        localPowerRatio = 3;
+    } else {
+        localPowerRatio = friends / enemies;
+    }
+}
+
+// "Don't let it breathe": the whole-army comparison localPowerRatio can't
+// give on its own, since it only looks at whoever's near the current front.
+// Once the enemy's *entire visible army* is clearly broken (not just this
+// skirmish) and the main force is itself in good shape, pursuitMode extends
+// how far units are willing to chase a fleeing target (see microGroup())
+// instead of snapping back to formation the moment it slips past the normal
+// leash — that gap is exactly what lets a beaten army regroup and come back
+// at full strength instead of actually being finished off.
+function updateGlobalBattleModel() {
+    friendlyGlobalPower = calculateMainPower();
+    enemyGlobalPower = powerOfEnemyList(visibleEnemyUnits());
+
+    if (enemyGlobalPower <= 0) {
+        globalPowerRatio = 3;
+    } else {
+        globalPowerRatio = friendlyGlobalPower / enemyGlobalPower;
+    }
+
+    pursuitMode = (
+        phase == 2 &&
+        globalPowerRatio >= 1.8 &&
+        armyHealthScore >= 0.6
+    );
+}
+
+function computeResourceReserve() {
+    let reserve = 0;
+    let uncoveredNeed = 0;
+    let defensiveNeed = 0;
+    let productionNeed = 0;
+
+    reserve = 120;
+    uncoveredNeed = desiredOutposts() - buildingCount("outpost");
+    defensiveNeed = 0;
+    productionNeed = 0;
+
+    if (!hasBuilding("barracks")) {
+        productionNeed = productionNeed + 170;
+    }
+
+    if (
+        hasBuilding("barracks") &&
+        !hasBuilding("factory") &&
+        gameTime() > 45
+    ) {
+        productionNeed = productionNeed + 220;
+    }
+
+    if (uncoveredNeed > 0) {
+        reserve = reserve + 180;
+    }
+
+    if (commandCenterUnderAttack()) {
+        defensiveNeed = defensiveNeed + 200;
+    }
+
+    if (emergencyActive) {
+        defensiveNeed = defensiveNeed + 140;
+    }
+
+    if (unitCount("Fabricator") < desiredFabricators()) {
+        reserve = reserve + 65;
+    }
+
+    if (incomeRate < 3 && gameTime() > 50) {
+        reserve = reserve + 100;
+    }
+
+    if (recentLosses >= 4) {
+        reserve = reserve + 100;
+    }
+
+    reserve = reserve + defensiveNeed + productionNeed;
+    reserveResources = reserve;
+
+    return reserve;
+}
+
+function updateStrategicModes() {
+    let now = 0;
+    let army = 0;
+    let workers = 0;
+
+    now = gameTime();
+
+    if (now < strategicTick) {
+        return;
+    }
+
+    mapDiagonal = strategicDistanceScale();
+    enemyBaseDistance = distanceBetween(
+        baseX(),
+        baseY(),
+        enemyBaseX(),
+        enemyBaseY()
+    );
+
+    updateIncomeModel();
+    updateLossModel();
+    calculateArmyHealth();
+    updateLocalBattleModel();
+    computeResourceReserve();
+
+    army = mainArmyCount();
+    workers = unitCount("Fabricator");
+    enemyPressure = baseThreat + workerThreat + assetThreat;
+
+    economyMode = 1;
+
+    if (workers < 3) {
+        economyMode = 2;
+    }
+
+    if (incomeRate < 2 && now > 65) {
+        economyMode = 2;
+    }
+
+    if (enemyPressure > 0 || recentLosses >= 5) {
+        economyMode = 0;
+    }
+
+    pressureMode = 0;
+
+    if (army >= requiredArmy && armyHealthScore > 0.70) {
+        pressureMode = 1;
+    }
+
+    if (localPowerRatio > 1.65 && army >= 8) {
+        pressureMode = 2;
+    }
+
+    if (
+        enemyPressure > 0 ||
+        armyHealthScore < 0.52 ||
+        recentLosses >= 6
+    ) {
+        pressureMode = -1;
+    }
+
+    safeToSpend = resources() > reserveResources;
+    safeToExpand = (
+        safeToSpend &&
+        enemyPressure <= 0 &&
+        pressureMode >= 0 &&
+        unitCount("Fabricator") >= 4
+    );
+    safeToResearch = (
+        resources() > reserveResources + 130 &&
+        !emergencyActive &&
+        recentLosses < 4
+    );
+    safeToTech = (
+        resources() > reserveResources + 200 &&
+        mainArmyCount() >= 6 &&
+        !emergencyActive
+    );
+
+    desiredFrontline = max(4, floor(army * 0.34));
+    desiredRanged = max(4, floor(army * 0.40));
+    desiredSupport = max(1, floor(army * 0.12));
+    desiredAir = max(0, floor(army * 0.18));
+    desiredNaval = 0;
+
+    if (waterAvailable) {
+        desiredNaval = max(2, floor(army * 0.20));
+    }
+
+    aggressionBudget = resources() - reserveResources;
+    strategicTick = now + 2;
+}
+
+function nodeThreatValue(node) {
+    let value = 0;
+    let nx = 0;
+    let ny = 0;
+    let distanceHome = 0;
+    let distanceEnemy = 0;
+    let enemies = 0;
+
+    if (node == "" || !nodeExists(node)) {
+        return 9999;
+    }
+
+    nx = nodeX(node);
+    ny = nodeY(node);
+    distanceHome = distanceBetween(baseX(), baseY(), nx, ny);
+    distanceEnemy = distanceBetween(enemyBaseX(), enemyBaseY(), nx, ny);
+    enemies = count(enemyUnitsNear(nx, ny, 180));
+
+    value = enemies * 100;
+
+    if (enemyBaseDistance >= 120 && distanceEnemy < distanceHome) {
+        value = value + 80;
+    }
+
+    if (enemyBaseDistance >= 120 && distanceEnemy < 220) {
+        value = value + 160;
+    }
+
+    if (distanceHome > mapDiagonal * 0.42) {
+        value = value + 70;
+    }
+
+    if (nodeRemaining(node) < 250) {
+        value = value + 120;
+    }
+
+    return value;
+}
+
+function nodeOnFriendlySide(node) {
+    let homeDistance = 0;
+    let enemyDistance = 0;
+
+    if (node == "" || !nodeExists(node)) {
+        return false;
+    }
+
+    homeDistance = distanceBetween(
+        baseX(),
+        baseY(),
+        nodeX(node),
+        nodeY(node)
+    );
+    enemyDistance = distanceBetween(
+        enemyBaseX(),
+        enemyBaseY(),
+        nodeX(node),
+        nodeY(node)
+    );
+
+    if (enemyBaseDistance < 120) {
+        return nodeHasEconomicConnection(node);
+    }
+
+    return homeDistance + expansionSafetyMargin < enemyDistance;
+}
+
+function nodeHasEnemyPresence(node) {
+    if (node == "" || !nodeExists(node)) {
+        return true;
+    }
+
+    if (
+        count(
+            enemyUnitsNear(
+                nodeX(node),
+                nodeY(node),
+                210
+            )
+        ) > 0
+    ) {
+        return true;
+    }
+
+    if (
+        count(
+            enemyBuildingsNear(
+                nodeX(node),
+                nodeY(node),
+                260
+            )
+        ) > 0
+    ) {
+        return true;
+    }
+
+    return false;
+}
+
+function nodeHasEconomicConnection(node) {
+    let homeDistance = 0;
+
+    if (node == "" || !nodeExists(node)) {
+        return false;
+    }
+
+    homeDistance = distanceBetween(
+        baseX(),
+        baseY(),
+        nodeX(node),
+        nodeY(node)
+    );
+
+    expansionConnectionRadius = max(
+        280,
+        mapDiagonal * 0.18
+    );
+
+    if (buildingCount("outpost") <= 0) {
+        return homeDistance <= mapDiagonal * 0.38;
+    }
+
+    for (outpost in myBuildingsOfType("outpost")) {
+        if (
+            buildingExists(outpost) &&
+            !buildingUnderConstruction(outpost) &&
+            distanceBetween(
+                buildingX(outpost),
+                buildingY(outpost),
+                nodeX(node),
+                nodeY(node)
+            ) <= expansionConnectionRadius
+        ) {
+            return true;
+        }
+    }
+
+    return homeDistance <= mapDiagonal * 0.32;
+}
+
+function nodeAreaSecured(node) {
+    let guards = 0;
+    let enemies = 0;
+    let buildings = 0;
+
+    if (node == "" || !nodeExists(node)) {
+        return false;
+    }
+
+    guards = fightersNearPoint(
+        nodeX(node),
+        nodeY(node),
+        170
+    );
+    enemies = count(
+        enemyUnitsNear(
+            nodeX(node),
+            nodeY(node),
+            220
+        )
+    );
+    buildings = count(
+        enemyBuildingsNear(
+            nodeX(node),
+            nodeY(node),
+            280
+        )
+    );
+
+    return (
+        guards >= expansionEscortRequired &&
+        enemies == 0 &&
+        buildings == 0 &&
+        armyHealthScore >= 0.72
+    );
+}
+
+function expansionHardSafe(node) {
+    let homeDistance = 0;
+    let enemyDistance = 0;
+
+    if (node == "" || !nodeExists(node)) {
+        return false;
+    }
+
+    if (nodeCovered(node) || nodeRemaining(node) <= 250) {
+        return false;
+    }
+
+    if (
+        buildingNear(
+            "outpost",
+            nodeX(node),
+            nodeY(node),
+            expansionCoverageRadius
+        )
+    ) {
+        return false;
+    }
+
+    if (
+        pendingExpansionNode != "" &&
+        gameTime() < pendingExpansionUntil
+    ) {
+        return false;
+    }
+
+    if (
+        rejectedExpansionNode == node &&
+        gameTime() < rejectedExpansionUntil
+    ) {
+        return false;
+    }
+
+    if (nodeHasEnemyPresence(node)) {
+        return false;
+    }
+
+    homeDistance = distanceBetween(
+        baseX(),
+        baseY(),
+        nodeX(node),
+        nodeY(node)
+    );
+    enemyDistance = distanceBetween(
+        enemyBaseX(),
+        enemyBaseY(),
+        nodeX(node),
+        nodeY(node)
+    );
+
+    if (enemyBaseDistance < 120) {
+        return (
+            nodeHasEconomicConnection(node) &&
+            homeDistance <= mapDiagonal * 0.42
+        );
+    }
+
+    if (enemyDistance < 230) {
+        return false;
+    }
+
+    if (nodeOnFriendlySide(node)) {
+        return (
+            nodeHasEconomicConnection(node) ||
+            homeDistance <= mapDiagonal * 0.42
+        );
+    }
+
+    if (homeDistance >= enemyDistance) {
+        return false;
+    }
+
+    return (
+        nodeHasEconomicConnection(node) &&
+        nodeAreaSecured(node) &&
+        pressureMode >= 1
+    );
+}
+
+function pendingExpansionActive() {
+    let foundOutpost = false;
+    let progress = 0;
+
+    if (pendingExpansionNode == "") {
+        return false;
+    }
+
+    if (!nodeExists(pendingExpansionNode)) {
+        pendingExpansionNode = "";
+        return false;
+    }
+
+    if (nodeCovered(pendingExpansionNode)) {
+        pendingExpansionNode = "";
+        pendingExpansionUntil = 0;
+        pendingExpansionFailures = 0;
+        return false;
+    }
+
+    foundOutpost = false;
+
+    for (outpost in myBuildingsOfType("outpost")) {
+        if (
+            buildingExists(outpost) &&
+            distanceBetween(
+                buildingX(outpost),
+                buildingY(outpost),
+                pendingExpansionX,
+                pendingExpansionY
+            ) <= expansionCoverageRadius
+        ) {
+            foundOutpost = true;
+            progress = buildingProgress(outpost);
+
+            if (
+                !buildingUnderConstruction(outpost) ||
+                progress >= 0.99
+            ) {
+                pendingExpansionNode = "";
+                pendingExpansionUntil = 0;
+                pendingExpansionFailures = 0;
+                pendingExpansionLastProgress = 0;
+                return false;
+            }
+
+            if (
+                progress >
+                pendingExpansionLastProgress + 0.01
+            ) {
+                pendingExpansionLastProgress = progress;
+                pendingExpansionProgressTime = gameTime();
+                pendingExpansionUntil = gameTime() + 35;
+            }
+        }
+    }
+
+    if (foundOutpost) {
+        if (
+            gameTime() - pendingExpansionProgressTime <= 30
+        ) {
+            return true;
+        }
+
+        rejectedExpansionNode = pendingExpansionNode;
+        rejectedExpansionUntil = gameTime() + 25;
+        pendingExpansionNode = "";
+        pendingExpansionUntil = 0;
+        return false;
+    }
+
+    if (gameTime() < pendingExpansionUntil) {
+        return true;
+    }
+
+    pendingExpansionFailures =
+        pendingExpansionFailures + 1;
+    rejectedExpansionNode = pendingExpansionNode;
+    rejectedExpansionUntil = gameTime() + 30;
+    pendingExpansionNode = "";
+    pendingExpansionUntil = 0;
+    return false;
+}
+
+function registerPendingExpansion(node) {
+    pendingExpansionNode = node;
+    pendingExpansionX = nodeX(node);
+    pendingExpansionY = nodeY(node);
+    pendingExpansionStarted = gameTime();
+    pendingExpansionUntil = gameTime() + 55;
+    pendingExpansionGuardUntil = gameTime() + 35;
+    pendingExpansionProgress = 0;
+    pendingExpansionLastProgress = 0;
+    pendingExpansionProgressTime = gameTime();
+}
+
+function guardPendingExpansion() {
+    let enemies = 0;
+    let guards = 0;
+
+    if (!pendingExpansionActive()) {
+        return false;
+    }
+
+    enemies = count(
+        enemyUnitsNear(
+            pendingExpansionX,
+            pendingExpansionY,
+            190
+        )
+    );
+    guards = fightersNearPoint(
+        pendingExpansionX,
+        pendingExpansionY,
+        155
+    );
+
+    if (enemies > 0) {
+        defendUnitsAt(
+            myUnitsOfTypes(
+                "Warden",
+                "Breaker",
+                "Bastion",
+                "Shrike"
+            ),
+            pendingExpansionX,
+            pendingExpansionY
+        );
+        return true;
+    }
+
+    if (
+        guards < 3 &&
+        gameTime() < pendingExpansionGuardUntil &&
+        !emergencyActive
+    ) {
+        defendUnitsAt(
+            myUnitsOfTypes("Warden", "Breaker"),
+            pendingExpansionX,
+            pendingExpansionY
+        );
+        return true;
+    }
+
+    return true;
+}
+
+function chooseSafeExpansion() {
+    let best = "";
+    let bestScore = 99999;
+    let score = 0;
+    let travel = 0;
+    let richnessBonus = 0;
+
+    if (gameTime() < expansionTick) {
+        return expansionCandidate;
+    }
+
+    for (node in knownResourceNodes()) {
+        if (
+            nodeExists(node) &&
+            !nodeCovered(node) &&
+            nodeRemaining(node) > 250 &&
+            expansionHardSafe(node)
+        ) {
+            travel = distanceBetween(
+                baseX(),
+                baseY(),
+                nodeX(node),
+                nodeY(node)
+            );
+            richnessBonus = min(nodeRemaining(node), 1500) / 20;
+            score = nodeThreatValue(node) + travel / 8 - richnessBonus;
+
+            if (score < bestScore) {
+                bestScore = score;
+                best = node;
+            }
+        }
+    }
+
+    expansionCandidate = best;
+    expansionDanger = bestScore;
+
+    if (best != "") {
+        expansionCandidateX = nodeX(best);
+        expansionCandidateY = nodeY(best);
+    }
+
+    expansionTick = gameTime() + 8;
+    return best;
+}
+
+function measureCurrentEconomyCapacity() {
+    coveredCrystalTotal = 0;
+    productiveCoveredNodes = 0;
+
+    for (node in knownResourceNodes()) {
+        if (
+            nodeExists(node) &&
+            nodeCovered(node) &&
+            nodeRemaining(node) > 0
+        ) {
+            coveredCrystalTotal =
+                coveredCrystalTotal +
+                nodeRemaining(node);
+            productiveCoveredNodes =
+                productiveCoveredNodes + 1;
+        }
+    }
+
+    if (productiveCoveredNodes > 0) {
+        averageCoveredCrystals =
+            coveredCrystalTotal /
+            productiveCoveredNodes;
+    } else {
+        averageCoveredCrystals = 0;
+    }
+}
+
+function updateEconomicRunway() {
+    measureCurrentEconomyCapacity();
+
+    crystalRunway = coveredCrystalTotal;
+    economicCrisis = (
+        productiveCoveredNodes <= 0 ||
+        crystalRunway < 280
+    );
+    economicWarning = (
+        economicCrisis ||
+        crystalRunway < 850 ||
+        averageCoveredCrystals < 420
+    );
+
+}
+
+function expansionUtility(node) {
+    let value = 0;
+    let distanceHome = 0;
+    let candidateRichness = 0;
+    let outposts = 0;
+
+    if (!expansionHardSafe(node)) {
+        return -9999;
+    }
+
+    updateEconomicRunway();
+    value = 0;
+    outposts = buildingCount("outpost");
+    candidateRichness = nodeRemaining(node);
+    distanceHome = distanceBetween(
+        baseX(),
+        baseY(),
+        nodeX(node),
+        nodeY(node)
+    );
+
+    if (productiveCoveredNodes <= 0) {
+        value = value + 120;
+    }
+
+    if (economicCrisis) {
+        value = value + 140;
+    } else {
+        if (economicWarning) {
+            value = value + 65;
+        }
+    }
+
+    if (incomeRate < 2) {
+        value = value + 75;
+    } else {
+        if (incomeRate < 4) {
+            value = value + 45;
+        } else {
+            if (incomeRate > 8) {
+                value = value - 45;
+            }
+        }
+    }
+
+    if (averageCoveredCrystals < 300) {
+        value = value + 70;
+    } else {
+        if (averageCoveredCrystals < 650) {
+            value = value + 35;
+        } else {
+            if (averageCoveredCrystals > 1300) {
+                value = value - 35;
+            }
+        }
+    }
+
+    value = value + min(45, candidateRichness / 35);
+    value = value - distanceHome / 18;
+    value = value - outposts * 11;
+
+    if (resources() > reserveResources + 260) {
+        value = value + 30;
+    }
+
+    if (unitCount("Fabricator") >= desiredFabricators()) {
+        value = value + 15;
+    } else {
+        value = value - 20;
+    }
+
+    if (
+        mainArmyCount() >= requiredArmy &&
+        armyHealthScore >= 0.72
+    ) {
+        value = value + 25;
+    } else {
+        value = value - 35;
+    }
+
+    if (recentLosses >= 3) {
+        value = value - recentLosses * 8;
+    }
+
+    if (phase == 2 || phase == 4) {
+        value = value - 28;
+    }
+
+    if (phase == 3) {
+        value = value - 55;
+    }
+
+    if (enemyPressure > 0 || emergencyActive) {
+        value = value - 200;
+    }
+
+    if (nodeOnFriendlySide(node)) {
+        value = value + 20;
+    }
+
+    return value;
+}
+
+function shouldExpandNow(node) {
+    if (
+        expansionDecisionNode == node &&
+        gameTime() < expansionDecisionTick
+    ) {
+        return expansionDecisionApproved;
+    }
+
+    expansionDecisionNode = node;
+    expansionDecisionValue = expansionUtility(node);
+    expansionDecisionApproved =
+        expansionDecisionValue >=
+        expansionDecisionThreshold;
+    expansionDecisionTick = gameTime() + 5;
+
+    return expansionDecisionApproved;
+}
+
+function updateExpansionSavings() {
+    let candidate = "";
+
+    if (gameTime() < expansionOpportunityTick) {
+        return expansionSavingsActive;
+    }
+
+    expansionOpportunityTick = gameTime() + 5;
+
+    if (
+        emergencyActive ||
+        commandCenterUnderAttack() ||
+        unitCount("Fabricator") < 4 ||
+        (
+            mainArmyCount() < 10 &&
+            !economicCrisis
+        ) ||
+        buildingCount("outpost") >= 8 ||
+        pendingExpansionActive()
+    ) {
+        expansionSavingsActive = false;
+        expansionSavingsNode = "";
+        return false;
+    }
+
+    expansionTick = gameTime();
+    candidate = chooseSafeExpansion();
+
+    if (candidate == "") {
+        expansionSavingsActive = false;
+        expansionSavingsNode = "";
+        return false;
+    }
+
+    if (!shouldExpandNow(candidate)) {
+        expansionSavingsActive = false;
+        expansionSavingsNode = "";
+        return false;
+    }
+
+    expansionSavingsActive = true;
+    expansionSavingsNode = candidate;
+    expansionSavingsTarget = max(320, reserveResources);
+    expansionSavingsUntil = gameTime() + 30;
+    expansionOpportunityCount =
+        expansionOpportunityCount + 1;
+
+    return true;
+}
+
+function shouldSaveForExpansion() {
+    updateEconomicRunway();
+    updateExpansionSavings();
+
+    if (!expansionSavingsActive) {
+        if (
+            economicWarning &&
+            !emergencyActive &&
+            resources() < 320
+        ) {
+            return true;
+        }
+
+        return false;
+    }
+
+    if (resources() >= expansionSavingsTarget) {
+        return false;
+    }
+
+    if (emergencyActive) {
+        return false;
+    }
+
+    return true;
+}
+
+function manageSafeExpansion() {
+    let candidate = "";
+    let outposts = 0;
+
+    if (!safeToExpand) {
+        return false;
+    }
+
+    if (pendingExpansionActive()) {
+        return false;
+    }
+
+    if (gameTime() < stalledExpansionUntil) {
+        return false;
+    }
+
+    if (gameTime() - lastExpansionAttempt < 10) {
+        return false;
+    }
+
+    candidate = chooseSafeExpansion();
+
+    if (candidate == "") {
+        return false;
+    }
+
+    if (
+        expansionDanger > 420 ||
+        !expansionHardSafe(candidate) ||
+        !shouldExpandNow(candidate)
+    ) {
+        rejectedExpansionNode = candidate;
+        rejectedExpansionUntil = gameTime() + 18;
+        return false;
+    }
+
+    outposts = buildingCount("outpost");
+    lastExpansionCount = outposts;
+    lastExpansionAttempt = gameTime();
+
+    if (expandToNode(candidate)) {
+        registerPendingExpansion(candidate);
+        expansionSavingsActive = false;
+        expansionSavingsNode = "";
+        stalledExpansionUntil = gameTime() + 55;
+        return true;
+    }
+
+    stalledExpansionUntil = gameTime() + 5;
+    return false;
+}
+
+function focusFireTarget(target) {
+    let ordered = 0;
+    let range = 0;
+    let distance = 0;
+
+    if (target == "" || !unitExists(target)) {
+        return 0;
+    }
+
+    for (id in mainFighters()) {
+        if (unitExists(id)) {
+            range = unitAttackRange(id);
+            distance = distanceBetween(
+                unitX(id),
+                unitY(id),
+                unitX(target),
+                unitY(target)
+            );
+
+            if (distance <= range + 34) {
+                if (attackUnit(id, target)) {
+                    ordered = ordered + 1;
+                }
+            }
+        }
+    }
+
+    focusOrders = focusOrders + ordered;
+    return ordered;
+}
+
+function rotateDamagedUnits() {
+    let target = "";
+    let danger = 0;
+    let ratio = 0;
+    let ordered = 0;
+
+    for (id in damagedUnits(0.46)) {
+        if (unitExists(id) && unitDomain(id) != "building") {
+            ratio = unitHealthRatio(id);
+            target = nearestEnemyUnitTo(unitX(id), unitY(id), 130);
+            danger = 0;
+
+            if (target != "") {
+                danger = unitAttack(target);
+            }
+
+            if (
+                ratio < retreatThreshold ||
+                danger >= unitHp(id)
+            ) {
+                if (retreatUnit(id)) {
+                    ordered = ordered + 1;
+                }
+            } else {
+                defendUnitAt(id, formationX, formationY);
+            }
+        }
+    }
+
+    retreatOrders = retreatOrders + ordered;
+    return ordered;
+}
+
+function useReadySkillsForUnit(id) {
+    let used = 0;
+
+    if (!unitExists(id)) {
+        return 0;
+    }
+
+    for (skill in unitSkills(id)) {
+        if (unitSkillReady(id, skill)) {
+            if (useUnitSkill(id, skill)) {
+                used = used + 1;
+            }
+        }
+    }
+
+    return used;
+}
+
+function manageCombatSkills() {
+    let used = 0;
+    let nearbyEnemy = "";
+    let damagedNearby = 0;
+    let threatened = false;
+
+    if (gameTime() < skillTick) {
+        return 0;
+    }
+
+    for (id in myUnitsOfTypes(
+        "Warden",
+        "Bastion",
+        "Breaker",
+        "Longshot",
+        "Thunderhead",
+        "Shrike",
+        "Harrier"
+    )) {
+        if (unitExists(id)) {
+            nearbyEnemy = nearestEnemyUnitTo(
+                unitX(id),
+                unitY(id),
+                max(80, unitAttackRange(id) + 35)
+            );
+
+            if (
+                nearbyEnemy != "" ||
+                unitHealthRatio(id) < 0.42
+            ) {
+                used = used + useReadySkillsForUnit(id);
+            }
+        }
+    }
+
+    for (id in myUnitsOfType("Medic")) {
+        if (unitExists(id) && unitSkillReady(id, "triagePulse")) {
+            damagedNearby = 0;
+            for (ally in unitsNear(unitX(id), unitY(id), 175)) {
+                if (unitExists(ally) && unitHealthRatio(ally) < 0.78) {
+                    damagedNearby = damagedNearby + 1;
+                }
+            }
+            if (damagedNearby >= 2) {
+                if (useUnitSkill(id, "triagePulse")) {
+                    used = used + 1;
+                }
+            }
+        }
+    }
+
+    for (id in myUnitsOfType("Fabricator")) {
+        if (unitExists(id) && unitSkillReady(id, "fieldRepair")) {
+            damagedNearby = 0;
+            for (ally in unitsNear(unitX(id), unitY(id), 120)) {
+                if (unitExists(ally) && unitHealthRatio(ally) < 0.72) {
+                    damagedNearby = damagedNearby + 1;
+                }
+            }
+            for (structure in myBuildingsNear(unitX(id), unitY(id), 120)) {
+                if (
+                    buildingExists(structure) &&
+                    buildingHealthRatio(structure) < 0.82
+                ) {
+                    damagedNearby = damagedNearby + 2;
+                }
+            }
+            if (damagedNearby >= 2) {
+                if (useUnitSkill(id, "fieldRepair")) {
+                    used = used + 1;
+                }
+            }
+        }
+    }
+
+    for (id in myUnitsOfType("Lynx")) {
+        if (unitExists(id) && unitSkillReady(id, "afterburners")) {
+            threatened = nearestEnemyUnitTo(unitX(id), unitY(id), 115) != "";
+            if (
+                threatened ||
+                brainGoal == 4 ||
+                distanceBetween(unitX(id), unitY(id), baseX(), baseY()) > 300
+            ) {
+                if (useUnitSkill(id, "afterburners")) {
+                    used = used + 1;
+                }
+            }
+        }
+    }
+
+    for (id in myUnitsOfTypes("Cutlass", "Leviathan", "Undertow")) {
+        if (unitExists(id)) {
+            nearbyEnemy = nearestEnemyUnitTo(
+                unitX(id),
+                unitY(id),
+                max(105, unitAttackRange(id) + 45)
+            );
+            if (nearbyEnemy != "" || unitHealthRatio(id) < 0.55) {
+                used = used + useReadySkillsForUnit(id);
+            }
+        }
+    }
+
+    abilityUses = abilityUses + used;
+    skillTick = gameTime() + 1;
+    return used;
+}
+
+function calculateFormationAnchor() {
+    let anchor = "";
+    let targetX = 0;
+    let targetY = 0;
+
+    targetX = baseX();
+    targetY = baseY();
+
+    if (phase == 2 || phase == 4) {
+        targetX = enemyBaseX();
+        targetY = enemyBaseY();
+    }
+
+    if (emergencyActive) {
+        targetX = defenseX;
+        targetY = defenseY;
+    }
+
+    anchor = closestUnitTo(mainFighters(), targetX, targetY);
+
+    if (anchor != "" && unitExists(anchor)) {
+        formationX = unitX(anchor);
+        formationY = unitY(anchor);
+    } else {
+        formationX = baseX();
+        formationY = baseY();
+    }
+
+    formationFacingX = targetX;
+    formationFacingY = targetY;
+}
+
+function builderCargoSafety() {
+    let enemy = "";
+    let distanceHome = 0;
+
+    if (gameTime() < builderSafetyTick) {
+        return;
+    }
+
+    for (id in myUnitsOfType("Fabricator")) {
+        if (unitExists(id)) {
+            enemy = nearestEnemyUnitTo(unitX(id), unitY(id), 100);
+
+            if (enemy != "") {
+                if (
+                    unitCargo(id) > 0 ||
+                    unitHealthRatio(id) < 0.72
+                ) {
+                    retreatUnit(id);
+                } else {
+                    moveUnitTo(id, baseX(), baseY());
+                }
+            } else {
+                distanceHome = distanceBetween(
+                    unitX(id),
+                    unitY(id),
+                    baseX(),
+                    baseY()
+                );
+
+                if (
+                    unitIsIdle(id) &&
+                    unitCargo(id) <= 0 &&
+                    distanceHome > mapDiagonal * 0.35
+                ) {
+                    moveUnitTo(id, economyGuardX, economyGuardY);
+                }
+            }
+        }
+    }
+
+    builderSafetyTick = gameTime() + 2;
+}
+
+function controlledDisengage() {
+    let ranged = 0;
+    let frontline = 0;
+
+    ranged = retreatUnits(rangedFighters());
+
+    if (ranged > 0) {
+        frontline = defendUnitsAt(
+            myUnitsOfTypes("Warden", "Bastion"),
+            formationX,
+            formationY
+        );
+    } else {
+        frontline = retreatUnits(
+            myUnitsOfTypes("Warden", "Bastion")
+        );
+    }
+
+    retreatOrders = retreatOrders + ranged + frontline;
+    regroupUntil = max(regroupUntil, gameTime() + 16);
+    phase = 3;
+}
+
+function desiredMinersForNode(node) {
+    let remaining = 0;
+    let desired = 0;
+
+    if (node == "" || !nodeExists(node)) {
+        return 0;
+    }
+
+    remaining = nodeRemaining(node);
+    desired = 3;
+
+    if (remaining < 180) {
+        desired = 1;
+    } else {
+        if (remaining < 420) {
+            desired = 2;
+        } else {
+            if (remaining > 1000 && incomeRate < 5) {
+                desired = 4;
+            }
+        }
+    }
+
+    if (enemyPressure > 0) {
+        desired = min(desired, 2);
+    }
+
+    return desired;
+}
+
+function coveredNodeSafeToMine(node) {
+    let nearbyEnemies = 0;
+    let nearbyEnemyBuildings = 0;
+
+    if (
+        node == "" ||
+        !nodeExists(node) ||
+        !nodeCovered(node)
+    ) {
+        return false;
+    }
+
+    nearbyEnemies = count(
+        enemyUnitsNear(
+            nodeX(node),
+            nodeY(node),
+            150
+        )
+    );
+    nearbyEnemyBuildings = count(
+        enemyBuildingsNear(
+            nodeX(node),
+            nodeY(node),
+            190
+        )
+    );
+
+    return (
+        nearbyEnemies <= 0 &&
+        nearbyEnemyBuildings <= 0
+    );
+}
+
+function evacuateUnsafeMine(node) {
+    let ordered = 0;
+
+    if (node == "" || !nodeExists(node)) {
+        return 0;
+    }
+
+    unsafeOutpostX = nodeX(node);
+    unsafeOutpostY = nodeY(node);
+    unsafeOutpostUntil = gameTime() + 15;
+
+    for (id in myUnitsOfType("Fabricator")) {
+        if (
+            unitExists(id) &&
+            inRange(
+                unitX(id),
+                unitY(id),
+                nodeX(node),
+                nodeY(node),
+                150
+            )
+        ) {
+            if (retreatUnit(id)) {
+                ordered = ordered + 1;
+            }
+        }
+    }
+
+    return ordered;
+}
+
+function findNearestDropoffForWorker(worker) {
+    let bestDistance = 0;
+    let distance = 0;
+
+    nearestDropoffX = baseX();
+    nearestDropoffY = baseY();
+    bestDistance = distanceBetween(
+        unitX(worker),
+        unitY(worker),
+        baseX(),
+        baseY()
+    );
+
+    for (outpost in myBuildingsOfType("outpost")) {
+        if (
+            buildingExists(outpost) &&
+            !buildingUnderConstruction(outpost)
+        ) {
+            distance = distanceBetween(
+                unitX(worker),
+                unitY(worker),
+                buildingX(outpost),
+                buildingY(outpost)
+            );
+
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                nearestDropoffX = buildingX(outpost);
+                nearestDropoffY = buildingY(outpost);
+            }
+        }
+    }
+
+    return bestDistance;
+}
+
+function protectCargoReturns() {
+    let nearestEnemy = "";
+
+    if (gameTime() < cargoReturnTick) {
+        return loadedFabricatorCount;
+    }
+
+    loadedFabricatorCount = 0;
+    emptyIdleFabricatorCount = 0;
+
+    for (worker in myUnitsOfType("Fabricator")) {
+        if (unitExists(worker)) {
+            if (unitCargo(worker) > 0) {
+                loadedFabricatorCount =
+                    loadedFabricatorCount + 1;
+
+                nearestEnemy = nearestEnemyUnitTo(
+                    unitX(worker),
+                    unitY(worker),
+                    95
+                );
+
+                if (nearestEnemy != "") {
+                    if (retreatUnit(worker)) {
+                        cargoRescueOrders =
+                            cargoRescueOrders + 1;
+                    }
+                } else {
+                    if (unitIsIdle(worker)) {
+                        findNearestDropoffForWorker(worker);
+
+                        if (
+                            moveUnitTo(
+                                worker,
+                                nearestDropoffX,
+                                nearestDropoffY
+                            )
+                        ) {
+                            cargoRescueOrders =
+                                cargoRescueOrders + 1;
+                        }
+                    }
+                }
+            } else {
+                if (unitIsIdle(worker)) {
+                    emptyIdleFabricatorCount =
+                        emptyIdleFabricatorCount + 1;
+                }
+            }
+        }
+    }
+
+    cargoReturnTick = gameTime() + 1;
+    return loadedFabricatorCount;
+}
+
+function rebalanceCoveredMines() {
+    let desired = 0;
+    let assigned = 0;
+    let shortage = 0;
+
+    if (gameTime() < miningManagerTick) {
+        return false;
+    }
+
+    protectCargoReturns();
+    shortage = 0;
+
+    for (node in knownResourceNodes()) {
+        if (
+            nodeExists(node) &&
+            nodeCovered(node) &&
+            nodeRemaining(node) > 0
+        ) {
+            if (!coveredNodeSafeToMine(node)) {
+                evacuateUnsafeMine(node);
+            } else {
+            desired = desiredMinersForNode(node);
+            assigned = minersAtNode(node);
+
+            if (assigned < desired) {
+                shortage = shortage + desired - assigned;
+                if (mineNode(node, desired)) {
+                    miningOrdersIssued =
+                        miningOrdersIssued + 1;
+                }
+            }
+            }
+        }
+    }
+
+    if (
+        knownMineCount <= 0 &&
+        loadedFabricatorCount <= 0
+    ) {
+        gatherResources();
+    }
+
+    miningManagerTick = gameTime() + 8;
+    return shortage > 0;
+}
+
+function buildingStrategicValue(id) {
+    let type = "";
+    let value = 0;
+
+    if (!buildingExists(id)) {
+        return -1;
+    }
+
+    type = buildingType(id);
+    value = 10;
+
+    if (type == "commandCenter") {
+        value = 200;
+    }
+
+    if (type == "factory") {
+        value = 100;
+    }
+
+    if (type == "barracks") {
+        value = 80;
+    }
+
+    if (type == "researchLab") {
+        value = 75;
+    }
+
+    if (type == "shipyard") {
+        value = 70;
+    }
+
+    if (type == "outpost") {
+        value = 65;
+    }
+
+    if (type == "turret") {
+        value = 50;
+    }
+
+    if (buildingHealthRatio(id) < 0.35) {
+        value = value + 45;
+    }
+
+    return value;
+}
+
+function selectCleanupBuilding() {
+    let best = "";
+    let bestScore = -99999;
+    let score = 0;
+    let distance = 0;
+    let defenders = 0;
+
+    for (building in visibleEnemyBuildings()) {
+        if (buildingExists(building)) {
+            distance = distanceBetween(
+                formationX,
+                formationY,
+                buildingX(building),
+                buildingY(building)
+            );
+            defenders = count(
+                enemyUnitsNear(
+                    buildingX(building),
+                    buildingY(building),
+                    125
+                )
+            );
+            score = buildingStrategicValue(building) * 4;
+            score = score - distance / 3;
+            score = score - defenders * 22;
+
+            if (buildingHealthRatio(building) < 0.35) {
+                score = score + 100;
+            }
+
+            if (score > bestScore) {
+                bestScore = score;
+                best = building;
+            }
+        }
+    }
+
+    return best;
+}
+
+function cleanupTargetValid() {
+    if (cleanupTarget == "") {
+        return false;
+    }
+
+    if (!buildingExists(cleanupTarget)) {
+        return false;
+    }
+
+    if (gameTime() >= cleanupTargetUntil) {
+        return false;
+    }
+
+    return true;
+}
+
+function acquireCleanupTarget() {
+    cleanupTarget = selectCleanupBuilding();
+
+    if (cleanupTarget == "") {
+        return false;
+    }
+
+    cleanupTargetX = buildingX(cleanupTarget);
+    cleanupTargetY = buildingY(cleanupTarget);
+    cleanupTargetUntil = gameTime() + 18;
+    cleanupPasses = cleanupPasses + 1;
+
+    calculateFormationAnchor();
+    beginObjective(
+        cleanupTargetX,
+        cleanupTargetY,
+        3,
+        18
+    );
+
+    return true;
+}
+
+function cleanupBlocker() {
+    let blocker = "";
+
+    blocker = nearestBlockerToArmy(105);
+
+    if (blockerMustBeFought(blocker)) {
+        return blocker;
+    }
+
+    return "";
+}
+
+function demolishCleanupTarget() {
+    let blocker = "";
+
+    if (!cleanupTargetValid()) {
+        if (!acquireCleanupTarget()) {
+            return false;
+        }
+    }
+
+    // Checked before the blocker check below, same reasoning as
+    // objectiveDecision(): a losing fight needs to actually disengage, not
+    // get stuck endlessly re-triggering "focus this blocker and hold"
+    // because a blocker is always in range once the armies have made
+    // contact — that pattern is exactly what used to leave a cleanup this
+    // close to winning stuck skirmishing forever instead of finishing.
+    if (
+        armyHealthScore < 0.40 ||
+        localPowerRatio < 0.55
+    ) {
+        controlledDisengage();
+        cleanupTarget = "";
+        return true;
+    }
+
+    blocker = cleanupBlocker();
+
+    if (blocker != "" && localPowerRatio < effectiveCommitThreshold()) {
+        focusFireTarget(blocker);
+        defendUnitsAt(
+            mainFighters(),
+            formationX,
+            formationY
+        );
+        return true;
+    }
+
+    if (blocker != "") {
+        focusFireTarget(blocker);
+    }
+
+    attackUnitsTo(
+        groundFighters(),
+        cleanupTargetX,
+        cleanupTargetY
+    );
+    attackUnitsTo(
+        airFighters(),
+        cleanupTargetX,
+        cleanupTargetY
+    );
+    moveUnitsTo(
+        myUnitsOfType("Medic"),
+        formationX,
+        formationY
+    );
+
+    if (isWaterAt(cleanupTargetX, cleanupTargetY)) {
+        attackUnitsTo(
+            navalFighters(),
+            cleanupTargetX,
+            cleanupTargetY
+        );
+    }
+
+    return true;
+}
+
+function searchForRemainingBuildings() {
+    if (gameTime() < cleanupSearchUntil) {
+        return;
+    }
+
+    if (unitCount("Lynx") > 0) {
+        scoutMap();
+    } else {
+        if (count(mainFighters()) > 0) {
+            attackUnitsTo(
+                mainFighters(),
+                enemyBaseX(),
+                enemyBaseY()
+            );
+        }
+    }
+
+    if (navyCount() > 0) {
+        commandNavy();
+    }
+
+    cleanupSearchUntil = gameTime() + 8;
+}
+
+function runBuildingCleanup() {
+    let visibleCount = 0;
+
+    visibleCount = count(visibleEnemyBuildings());
+    lastVisibleBuildingCount = visibleCount;
+
+    if (
+        visibleCount > 0 &&
+        (phase == 2 || mainArmyCount() >= requiredArmy)
+    ) {
+        if (!cleanupMode && !battleOutcomeRecorded) {
+            recordBattleOutcome(true);
+            battleOutcomeRecorded = true;
+        }
+        cleanupMode = true;
+    }
+
+    if (!cleanupMode) {
+        return false;
+    }
+
+    finishing = true;
+    phase = 2;
+
+    if (visibleCount > 0) {
+        return demolishCleanupTarget();
+    }
+
+    cleanupTarget = "";
+    searchForRemainingBuildings();
+    return true;
+}
+
+// combatUnits() includes every non-Builder unit with an attack stat above
+// zero — that includes the Scout (small self-defense attack, not meant for
+// actually fighting). Rolling it into "the army" caused a real bug: a scout
+// meeting one enemy while out exploring alone is very often the *closest*
+// mainFighters() unit to that encounter, so scanArmyThreats()/
+// updateLocalBattleModel() (both anchor on "whichever fighter is nearest
+// the action") register it as the whole army being under threat and send
+// everyone marching to wherever the scout happened to be. combatFighters()
+// is the same list with the Scout excluded — every fighting-group function
+// below is built from this, not combatUnits() directly, so a scout's own
+// encounters stay its own problem (see protectWisps()) instead of the whole
+// army's.
+function combatFighters() {
+    let result = [];
+    for (id in combatUnits()) {
+        if (unitClass(id) != "scout") {
+            result[count(result)] = id;
+        }
+    }
+    return result;
+}
+
+// No enumerated list of unit types here at all — not race flavor names, not
+// even generic archetype labels, since either one is still a hand-maintained
+// list a future unit could silently fall through. These check the actual
+// property that defines each group instead: unitDomain() (ground/air/sea)
+// for where a unit fights, unitClass() for what kind of threat it is. Every
+// race's whole non-Builder combat roster (minus the Scout, see
+// combatFighters() above) is covered automatically, present or future, with
+// nothing here to update if the roster ever changes.
+function unitsInDomain(list, domain) {
+    let result = [];
+    for (id in list) {
+        if (unitDomain(id) == domain) {
+            result[count(result)] = id;
+        }
+    }
+    return result;
+}
+
+function groundFighters() {
+    return unitsInDomain(combatFighters(), "ground");
+}
+
+function airFighters() {
+    return unitsInDomain(combatFighters(), "air");
+}
+
+function navalFighters() {
+    return unitsInDomain(combatFighters(), "sea");
+}
+
+// Land + air army, i.e. everything navalFighters() doesn't already cover —
+// naval stays tracked separately since it only exists/matters on water maps.
+function mainFighters() {
+    let result = [];
+    for (id in combatFighters()) {
+        if (unitDomain(id) != "sea") {
+            result[count(result)] = id;
+        }
+    }
+    return result;
+}
+
+// Same "prioritize sniper/artillery/antiArmor" rule as isPriorityRangedEnemy()
+// below — one race-agnostic class check instead of a per-race name list.
+function rangedFighters() {
+    let result = [];
+    for (id in combatFighters()) {
+        let cls = unitClass(id);
+        if (cls == "sniper" || cls == "artillery" || cls == "antiArmor") {
+            result[count(result)] = id;
+        }
+    }
+    return result;
+}
+
+function mainArmyCount() {
+    return count(mainFighters());
+}
+
+function frontlineCount() {
+    return (
+        unitCount("Warden") +
+        unitCount("Bastion")
+    );
+}
+
+function rangedCount() {
+    return count(rangedFighters());
+}
+
+function navyCount() {
+    return count(navalFighters());
+}
+
+function calculateMainPower() {
+    return totalAttack(mainFighters());
+}
+
+function fightersNearPoint(x, y, radius) {
+    let nearby = 0;
+    nearby = 0;
+
+    for (id in mainFighters()) {
+        if (
+            unitExists(id) &&
+            inRange(
+                unitX(id),
+                unitY(id),
+                x,
+                y,
+                radius
+            )
+        ) {
+            nearby = nearby + 1;
+        }
+    }
+
+    return nearby;
+}
+
+function frontlinersNearPoint(x, y, radius) {
+    let nearby = 0;
+    nearby = 0;
+
+    for (
+        id in
+        myUnitsOfTypes("Warden", "Bastion")
+    ) {
+        if (
+            unitExists(id) &&
+            inRange(
+                unitX(id),
+                unitY(id),
+                x,
+                y,
+                radius
+            )
+        ) {
+            nearby = nearby + 1;
+        }
+    }
+
+    return nearby;
+}
+
+function queueOpen(type, maximumQueue) {
+    let available = false;
+    available = false;
+
+    for (building in myBuildingsOfType(type)) {
+        if (
+            buildingExists(building) &&
+            !buildingUnderConstruction(building) &&
+            buildingQueueLength(building) <
+            maximumQueue
+        ) {
+            available = true;
+        }
+    }
+
+    return available;
+}
+
+function detectWaterMap() {
+    let middleX = 0;
+    let middleY = 0;
+    let hits = 0;
+    let quarterX = 0;
+    let quarterY = 0;
+    let threeQuarterX = 0;
+    let threeQuarterY = 0;
+
+    if (
+        waterChecked &&
+        waterAvailable
+    ) {
+        return waterAvailable;
+    }
+
+    if (gameTime() < nextWaterScan) {
+        return waterAvailable;
+    }
+
+    middleX = floor(mapWidth() / 2);
+    middleY = floor(mapHeight() / 2);
+    quarterX = floor(mapWidth() / 4);
+    quarterY = floor(mapHeight() / 4);
+    threeQuarterX = floor(mapWidth() * 3 / 4);
+    threeQuarterY = floor(mapHeight() * 3 / 4);
+    hits = 0;
+
+    if (isWaterAt(middleX, middleY)) {
+        hits = hits + 1;
+    }
+
+    if (isWaterAt(quarterX, middleY)) {
+        hits = hits + 1;
+    }
+
+    if (isWaterAt(threeQuarterX, middleY)) {
+        hits = hits + 1;
+    }
+
+    if (isWaterAt(middleX, quarterY)) {
+        hits = hits + 1;
+    }
+
+    if (isWaterAt(middleX, threeQuarterY)) {
+        hits = hits + 1;
+    }
+
+    if (isWaterAt(quarterX, quarterY)) {
+        hits = hits + 1;
+    }
+
+    if (isWaterAt(quarterX, threeQuarterY)) {
+        hits = hits + 1;
+    }
+
+    if (isWaterAt(threeQuarterX, quarterY)) {
+        hits = hits + 1;
+    }
+
+    if (isWaterAt(threeQuarterX, threeQuarterY)) {
+        hits = hits + 1;
+    }
+
+    if (
+        isWaterAt(clamp(baseX() + 70, 0, mapWidth()), baseY()) ||
+        isWaterAt(clamp(baseX() - 70, 0, mapWidth()), baseY()) ||
+        isWaterAt(baseX(), clamp(baseY() + 70, 0, mapHeight())) ||
+        isWaterAt(baseX(), clamp(baseY() - 70, 0, mapHeight()))
+    ) {
+        hits = hits + 2;
+    }
+
+    if (
+        isWaterAt(clamp(enemyBaseX() + 70, 0, mapWidth()), enemyBaseY()) ||
+        isWaterAt(clamp(enemyBaseX() - 70, 0, mapWidth()), enemyBaseY()) ||
+        isWaterAt(enemyBaseX(), clamp(enemyBaseY() + 70, 0, mapHeight())) ||
+        isWaterAt(enemyBaseX(), clamp(enemyBaseY() - 70, 0, mapHeight()))
+    ) {
+        hits = hits + 2;
+    }
+
+    waterSampleHits = max(waterSampleHits, hits);
+    waterAvailable = waterSampleHits > 0;
+
+    waterChecked = true;
+    waterScanCount = waterScanCount + 1;
+    nextWaterScan = gameTime() + 25;
+    return waterAvailable;
+}
+
+function scanMineNetwork() {
+    let farthestGuardDistance = 0;
+    let richestUncovered = 0;
+
+    if (gameTime() < nextMineScan) {
+        return false;
+    }
+
+    knownMineCount = 0;
+    coveredMineCount = 0;
+    bestExpansionNode = "";
+    economyGuardX = baseX();
+    economyGuardY = baseY();
+    farthestGuardDistance = 0;
+    richestUncovered = 0;
+
+    for (node in knownResourceNodes()) {
+        if (
+            nodeExists(node) &&
+            nodeRemaining(node) > 0
+        ) {
+            knownMineCount =
+                knownMineCount + 1;
+
+            if (nodeCovered(node)) {
+                coveredMineCount =
+                    coveredMineCount + 1;
+
+                if (minersAtNode(node) > 0) {
+                    let guardDistance = 0;
+
+                    guardDistance =
+                        distanceBetween(
+                            baseX(),
+                            baseY(),
+                            nodeX(node),
+                            nodeY(node)
+                        );
+
+                    if (
+                        guardDistance >
+                        farthestGuardDistance
+                    ) {
+                        farthestGuardDistance =
+                            guardDistance;
+
+                        economyGuardX =
+                            nodeX(node);
+
+                        economyGuardY =
+                            nodeY(node);
+                    }
+                }
+            } else {
+                if (
+                    nodeRemaining(node) >
+                    richestUncovered &&
+                    expansionHardSafe(node)
+                ) {
+                    richestUncovered =
+                        nodeRemaining(node);
+
+                    bestExpansionNode = node;
+                }
+            }
+        }
+    }
+
+    nextMineScan = gameTime() + 8;
+    return true;
+}
+
+function desiredFabricators() {
+    return clamp(
+        4 +
+        coveredMineCount +
+        coveredMineCount,
+        5,
+        12
+    );
+}
+
+function assignMineNetwork() {
+    protectCargoReturns();
+    return rebalanceCoveredMines();
+}
+
+function desiredOutposts() {
+    let desired = 0;
+
+    desired = clamp(
+        knownMineCount,
+        0,
+        8
+    );
+
+    if (gameTime() < 80) {
+        return 0;
+    }
+
+    if (gameTime() < 160) {
+        return min(desired, 1);
+    }
+
+    if (gameTime() < 280) {
+        return min(desired, 2);
+    }
+
+    if (gameTime() < 430) {
+        return min(desired, 3);
+    }
+
+    if (gameTime() < 600) {
+        return min(desired, 5);
+    }
+
+    return desired;
+}
+
+function isPriorityRangedEnemy(id) {
+    // unitClass() is the race-agnostic role ("sniper", "artillery",
+    // "antiArmor" for rocket-type units, ...) — the same for every race's
+    // matching unit regardless of its flavor name, and regardless of how
+    // many ranged-priority unit types a given race has. unitType() by
+    // contrast returns that *specific* unit's own per-race id ("seer",
+    // "longshot", "optic", ...), which is exactly the kind of hardcoded,
+    // race-by-race, easy-to-miss-one check this avoids.
+    let cls = "";
+    cls = unitClass(id);
+
+    return (
+        cls == "sniper" ||
+        cls == "artillery" ||
+        cls == "antiArmor"
+    );
+}
+
+function threatScore(id, distance) {
+    let score = 0;
+
+    score = (
+        unitAttackRange(id) +
+        unitAttackRange(id) +
+        unitAttackRange(id) +
+        unitAttack(id) -
+        floor(distance / 4)
+    );
+
+    if (isPriorityRangedEnemy(id)) {
+        score = score + 250;
+    }
+
+    return score;
+}
+
+// Nudges the running "which way does trouble come from" direction estimate
+// toward wherever an actual attacker was just seen, relative to home base —
+// call this anywhere a threat scan identifies a real attacker. An
+// exponential moving average rather than a flat average so the estimate
+// keeps tracking the enemy's actual approach lanes even if earlier fights
+// happened to come from a misleading direction (e.g. a raiding party
+// looping around).
+function noteEnemyDirection(x, y) {
+    let dx = 0;
+    let dy = 0;
+    let length = 0;
+
+    dx = x - baseX();
+    dy = y - baseY();
+    length = distanceBetween(0, 0, dx, dy);
+
+    if (length < 1) {
+        return;
+    }
+
+    dx = dx / length;
+    dy = dy / length;
+
+    if (inferredEnemyObservations <= 0) {
+        inferredEnemyDirX = dx;
+        inferredEnemyDirY = dy;
+    } else {
+        inferredEnemyDirX = inferredEnemyDirX * 0.9 + dx * 0.1;
+        inferredEnemyDirY = inferredEnemyDirY * 0.9 + dy * 0.1;
+    }
+
+    inferredEnemyObservations = inferredEnemyObservations + 1;
+}
+
+// Best guess at where the enemy's base is before it's actually been
+// scouted, projected outward from home base along the direction attackers
+// have actually been coming from. Falls back to the real (or, pre-scout,
+// harmlessly own-base) position once nothing better is known — see
+// noteEnemyDirection() and enemyBaseFound().
+function inferredEnemyBaseX() {
+    if (enemyBaseFound() || inferredEnemyObservations <= 0) {
+        return enemyBaseX();
+    }
+
+    return clamp(baseX() + inferredEnemyDirX * mapDiagonal * 0.5, 0, mapWidth());
+}
+
+function inferredEnemyBaseY() {
+    if (enemyBaseFound() || inferredEnemyObservations <= 0) {
+        return enemyBaseY();
+    }
+
+    return clamp(baseY() + inferredEnemyDirY * mapDiagonal * 0.5, 0, mapHeight());
+}
+
+// Records one attack wave's outcome (see launchAttack()'s reset of
+// battleOutcomeRecorded, attackCollapsed()'s loss, and runBuildingCleanup()'s
+// win) into a short rolling history, most recent last, capped at 6.
+function recordBattleOutcome(won) {
+    let trimmed = [];
+    let i = 0;
+    let outcome = 0;
+
+    outcome = 0;
+
+    if (won) {
+        outcome = 1;
+    }
+
+    recentBattleOutcomes[count(recentBattleOutcomes)] = outcome;
+
+    if (count(recentBattleOutcomes) > 6) {
+        i = 1;
+        while (i < count(recentBattleOutcomes)) {
+            trimmed[count(trimmed)] = recentBattleOutcomes[i];
+            i = i + 1;
+        }
+        recentBattleOutcomes = trimmed;
+    }
+
+    if (won) {
+        battleWinStreak = battleWinStreak + 1;
+        battleLossStreak = 0;
+    } else {
+        battleLossStreak = battleLossStreak + 1;
+        battleWinStreak = 0;
+    }
+}
+
+// Recent win rate shifted to roughly -0.5 (losing lately) .. +0.5 (winning
+// lately), 0 with no history yet.
+function battleConfidence() {
+    let wins = 0;
+    let i = 0;
+
+    if (count(recentBattleOutcomes) <= 0) {
+        return 0;
+    }
+
+    while (i < count(recentBattleOutcomes)) {
+        wins = wins + recentBattleOutcomes[i];
+        i = i + 1;
+    }
+
+    return (wins / count(recentBattleOutcomes)) - 0.5;
+}
+
+// combatCommitThreshold (see its declaration above) is this race's baseline
+// appetite for pushing through resistance — this is that same number
+// adjusted by how the last several fights actually went: a winning streak
+// lowers the bar (confidence earned), a losing streak raises it (caution
+// earned), without ever needing an actual advantage of zero or less.
+function effectiveCommitThreshold() {
+    return clamp(combatCommitThreshold - battleConfidence() * 0.3, 0.6, 1.6);
+}
+
+function scanWorkerThreats() {
+    let bestDangerScore = 0;
+    let weakestWorkerId = "";
+
+    workerThreat = 0;
+    bestDangerScore = 0;
+
+    if (
+        rememberedWorkerAttacker != "" &&
+        gameTime() < workerDefenseUntil &&
+        unitExists(rememberedWorkerAttacker)
+    ) {
+        workerThreatX =
+            unitX(rememberedWorkerAttacker);
+
+        workerThreatY =
+            unitY(rememberedWorkerAttacker);
+    }
+
+    for (worker in myUnitsOfType("Fabricator")) {
+        if (unitExists(worker)) {
+            for (enemy in visibleEnemyUnits()) {
+                if (unitExists(enemy) && unitAttack(enemy) > 0) {
+                    let enemyDistance = 0;
+                    let dangerRange = 0;
+
+                    enemyDistance =
+                        distanceBetween(
+                            unitX(worker),
+                            unitY(worker),
+                            unitX(enemy),
+                            unitY(enemy)
+                        );
+
+                    dangerRange =
+                        unitAttackRange(enemy) + 14;
+
+                    if (
+                        enemyDistance <=
+                        dangerRange + 18
+                    ) {
+                        workerThreat =
+                            workerThreat + 1;
+                        noteEnemyDirection(unitX(enemy), unitY(enemy));
+
+                        if (
+                            threatScore(
+                                enemy,
+                                enemyDistance
+                            ) > bestDangerScore
+                        ) {
+                            bestDangerScore =
+                                threatScore(
+                                    enemy,
+                                    enemyDistance
+                                );
+
+                            rememberedWorkerAttacker =
+                                enemy;
+
+                            workerThreatX =
+                                unitX(enemy);
+
+                            workerThreatY =
+                                unitY(enemy);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    weakestWorkerId = weakestUnit(
+        myUnitsOfType("Fabricator")
+    );
+
+    if (weakestWorkerId != "") {
+        if (watchedWorker == weakestWorkerId) {
+            if (
+                unitHealthRatio(weakestWorkerId) <
+                watchedWorkerHealth
+            ) {
+                workerThreat = max(
+                    workerThreat,
+                    1
+                );
+
+                if (
+                    rememberedWorkerAttacker == ""
+                ) {
+                    workerThreatX =
+                        unitX(weakestWorkerId);
+
+                    workerThreatY =
+                        unitY(weakestWorkerId);
+                }
+            }
+        } else {
+            watchedWorker = weakestWorkerId;
+        }
+
+        watchedWorkerHealth =
+            unitHealthRatio(weakestWorkerId);
+    }
+
+    if (workerThreat > 0) {
+        workerDefenseUntil = gameTime() + 30;
+        return true;
+    }
+
+    if (
+        rememberedWorkerAttacker != "" &&
+        !unitExists(rememberedWorkerAttacker)
+    ) {
+        rememberedWorkerAttacker = "";
+        workerDefenseUntil = gameTime();
+    }
+
+    return false;
+}
+
+function scanBaseThreats() {
+    let bestDangerScore = 0;
+
+    baseThreat = 0;
+    baseThreatX = baseX();
+    baseThreatY = baseY();
+    baseThreatTarget = "";
+    bestDangerScore = 0;
+
+    if (
+        rememberedBaseAttacker != "" &&
+        unitExists(rememberedBaseAttacker)
+    ) {
+        baseThreatX =
+            unitX(rememberedBaseAttacker);
+
+        baseThreatY =
+            unitY(rememberedBaseAttacker);
+    }
+
+    for (enemy in visibleEnemyUnits()) {
+        if (unitExists(enemy) && unitAttack(enemy) > 0) {
+            let enemyDistance = 0;
+            let dangerRange = 0;
+
+            enemyDistance = distanceBetween(
+                baseX(),
+                baseY(),
+                unitX(enemy),
+                unitY(enemy)
+            );
+
+            dangerRange =
+                unitAttackRange(enemy) + 38;
+
+            if (
+                enemyDistance <= dangerRange ||
+                enemyDistance <= 90
+            ) {
+                baseThreat = baseThreat + 1;
+                noteEnemyDirection(unitX(enemy), unitY(enemy));
+
+                if (
+                    threatScore(
+                        enemy,
+                        enemyDistance
+                    ) > bestDangerScore
+                ) {
+                    bestDangerScore =
+                        threatScore(
+                            enemy,
+                            enemyDistance
+                        );
+
+                    baseThreatX = unitX(enemy);
+                    baseThreatY = unitY(enemy);
+                    baseThreatTarget = enemy;
+                }
+            }
+        }
+    }
+
+    if (baseThreatTarget != "") {
+        rememberedBaseAttacker =
+            baseThreatTarget;
+    } else {
+        if (
+            rememberedBaseAttacker != "" &&
+            !unitExists(rememberedBaseAttacker)
+        ) {
+            rememberedBaseAttacker = "";
+        }
+    }
+}
+
+function scanAssetThreats() {
+    let bestDangerScore = 0;
+
+    assetThreat = 0;
+    assetThreatX = baseX();
+    assetThreatY = baseY();
+    assetThreatTarget = "";
+    bestDangerScore = 0;
+
+    for (building in myBuildings()) {
+        if (buildingExists(building)) {
+            let localThreat = 0;
+            localThreat = 0;
+
+            for (enemy in visibleEnemyUnits()) {
+                if (unitExists(enemy) && unitAttack(enemy) > 0) {
+                    let enemyDistance = 0;
+
+                    enemyDistance =
+                        distanceBetween(
+                            buildingX(building),
+                            buildingY(building),
+                            unitX(enemy),
+                            unitY(enemy)
+                        );
+
+                    if (
+                        enemyDistance <=
+                        unitAttackRange(enemy) + 35
+                    ) {
+                        localThreat =
+                            localThreat + 1;
+
+                        if (
+                            threatScore(
+                                enemy,
+                                enemyDistance
+                            ) > bestDangerScore
+                        ) {
+                            bestDangerScore =
+                                threatScore(
+                                    enemy,
+                                    enemyDistance
+                                );
+
+                            assetThreatX =
+                                unitX(enemy);
+
+                            assetThreatY =
+                                unitY(enemy);
+
+                            assetThreatTarget =
+                                enemy;
+                        }
+                    }
+                }
+            }
+
+            assetThreat =
+                assetThreat + localThreat;
+        }
+    }
+}
+
+function scanArmyThreats() {
+    let closestFighter = "";
+    let bestDangerScore = 0;
+
+    armyThreat = 0;
+    armyThreatX = baseX();
+    armyThreatY = baseY();
+    armyThreatTarget = "";
+    bestDangerScore = 0;
+
+    for (enemy in visibleEnemyUnits()) {
+        if (unitExists(enemy) && unitAttack(enemy) > 0) {
+            let enemyDistance = 999999;
+
+            closestFighter = closestUnitTo(
+                mainFighters(),
+                unitX(enemy),
+                unitY(enemy)
+            );
+
+            if (
+                closestFighter != "" &&
+                unitExists(closestFighter)
+            ) {
+                enemyDistance =
+                    distanceBetween(
+                        unitX(closestFighter),
+                        unitY(closestFighter),
+                        unitX(enemy),
+                        unitY(enemy)
+                    );
+
+                if (
+                    enemyDistance <=
+                    max(
+                        90,
+                        unitAttackRange(enemy) + 25
+                    )
+                ) {
+                    armyThreat = armyThreat + 1;
+
+                    if (
+                        threatScore(
+                            enemy,
+                            enemyDistance
+                        ) > bestDangerScore
+                    ) {
+                        bestDangerScore =
+                            threatScore(
+                                enemy,
+                                enemyDistance
+                            );
+
+                        armyThreatX =
+                            unitX(enemy);
+
+                        armyThreatY =
+                            unitY(enemy);
+
+                        armyThreatTarget =
+                            enemy;
+                    }
+                }
+            }
+        }
+    }
+}
+
+function selectDefenseTarget() {
+    emergencyNow = false;
+
+    if (
+        defenseTarget != "" &&
+        !unitExists(defenseTarget)
+    ) {
+        defenseTarget = "";
+    }
+
+    if (commandCenterUnderAttack()) {
+        emergencyNow = true;
+
+        if (baseThreatTarget != "") {
+            defenseTarget = baseThreatTarget;
+            defenseX = unitX(baseThreatTarget);
+            defenseY = unitY(baseThreatTarget);
+        } else {
+            if (
+                rememberedBaseAttacker != "" &&
+                unitExists(rememberedBaseAttacker)
+            ) {
+                defenseTarget =
+                    rememberedBaseAttacker;
+
+                defenseX =
+                    unitX(rememberedBaseAttacker);
+
+                defenseY =
+                    unitY(rememberedBaseAttacker);
+            } else {
+                defenseTarget = "";
+                defenseX = baseX();
+                defenseY = baseY();
+            }
+        }
+
+        defenseUntil = gameTime() + 22;
+    } else {
+        if (workerThreat > 0) {
+            emergencyNow = true;
+
+            defenseTarget =
+                rememberedWorkerAttacker;
+
+            defenseX = workerThreatX;
+            defenseY = workerThreatY;
+            defenseUntil = workerDefenseUntil;
+        } else {
+            if (
+                rememberedWorkerAttacker != "" &&
+                gameTime() < workerDefenseUntil &&
+                unitExists(
+                    rememberedWorkerAttacker
+                )
+            ) {
+                emergencyNow = true;
+
+                defenseTarget =
+                    rememberedWorkerAttacker;
+
+                defenseX = workerThreatX;
+                defenseY = workerThreatY;
+                defenseUntil = workerDefenseUntil;
+            } else {
+                if (baseThreat > 0) {
+                    emergencyNow = true;
+                    defenseTarget = baseThreatTarget;
+                    defenseX = baseThreatX;
+                    defenseY = baseThreatY;
+
+                    defenseUntil =
+                        gameTime() + 22;
+                } else {
+                    if (assetThreat > 0) {
+                        emergencyNow = true;
+
+                        defenseTarget =
+                            assetThreatTarget;
+
+                        defenseX = assetThreatX;
+                        defenseY = assetThreatY;
+
+                        defenseUntil =
+                            gameTime() + 20;
+                    } else {
+                        if (
+                            armyThreat > 0 &&
+                            phase != 2
+                        ) {
+                            emergencyNow = true;
+
+                            defenseTarget =
+                                armyThreatTarget;
+
+                            defenseX = armyThreatX;
+                            defenseY = armyThreatY;
+
+                            defenseUntil =
+                                gameTime() + 16;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    emergencyActive = (
+        emergencyNow ||
+        gameTime() < defenseUntil
+    );
+}
+
+function evacuateFabricators() {
+    for (worker in myUnitsOfType("Fabricator")) {
+        if (unitExists(worker)) {
+            let attacker = "";
+            let attackerDistance = 999999;
+            let escapeX = 0;
+            let escapeY = 0;
+
+            attacker = "";
+            attackerDistance = 999999;
+
+            for (enemy in visibleEnemyUnits()) {
+                if (unitExists(enemy) && unitAttack(enemy) > 0) {
+                    let enemyDistance = 0;
+
+                    enemyDistance =
+                        distanceBetween(
+                            unitX(worker),
+                            unitY(worker),
+                            unitX(enemy),
+                            unitY(enemy)
+                        );
+
+                    if (
+                        enemyDistance <=
+                        unitAttackRange(enemy) + 14 &&
+                        enemyDistance <
+                        attackerDistance
+                    ) {
+                        attacker = enemy;
+                        attackerDistance =
+                            enemyDistance;
+                    }
+                }
+            }
+
+            if (attacker != "") {
+                escapeX = clamp(
+                    unitX(worker) +
+                    (
+                        unitX(worker) -
+                        unitX(attacker)
+                    ),
+                    0,
+                    mapWidth()
+                );
+
+                escapeY = clamp(
+                    unitY(worker) +
+                    (
+                        unitY(worker) -
+                        unitY(attacker)
+                    ),
+                    0,
+                    mapHeight()
+                );
+
+                moveUnitTo(
+                    worker,
+                    escapeX,
+                    escapeY
+                );
+            } else {
+                if (
+                    gameTime() <
+                    workerDefenseUntil &&
+                    inRange(
+                        unitX(worker),
+                        unitY(worker),
+                        workerThreatX,
+                        workerThreatY,
+                        180
+                    )
+                ) {
+                    escapeX = clamp(
+                        baseX() +
+                        (
+                            baseX() -
+                            workerThreatX
+                        ),
+                        0,
+                        mapWidth()
+                    );
+
+                    escapeY = clamp(
+                        baseY() +
+                        (
+                            baseY() -
+                            workerThreatY
+                        ),
+                        0,
+                        mapHeight()
+                    );
+
+                    moveUnitTo(
+                        worker,
+                        escapeX,
+                        escapeY
+                    );
+                }
+            }
+        }
+    }
+}
+
+function protectLynxs() {
+    for (id in myUnitsOfType("Lynx")) {
+        if (unitExists(id)) {
+            let dangerNearby = false;
+
+            dangerNearby = false;
+
+            // Only enemies that can actually hurt it count as danger — a
+            // harmless spotted enemy (0 attack: an opposing scout, a
+            // builder) shouldn't send the scout running for home.
+            for (enemy in enemyUnitsNear(unitX(id), unitY(id), unitSight(id) + 10)) {
+                if (unitExists(enemy) && unitAttack(enemy) > 0) {
+                    dangerNearby = true;
+                }
+            }
+
+            if (dangerNearby) {
+                retreatUnit(id);
+            }
+        }
+    }
+}
+
+function moveMedicsWithArmy() {
+    let weakest = "";
+    let frontGuide = "";
+
+    weakest = weakestUnit(mainFighters());
+
+    frontGuide = closestUnitTo(
+        mainFighters(),
+        enemyBaseX(),
+        enemyBaseY()
+    );
+
+    for (id in myUnitsOfType("Medic")) {
+        if (unitExists(id)) {
+            if (unitHealthRatio(id) < 0.45) {
+                retreatUnit(id);
+            } else {
+                if (
+                    phase == 4 &&
+                    !emergencyActive
+                ) {
+                    moveUnitTo(
+                        id,
+                        stagingX,
+                        stagingY
+                    );
+                } else {
+                    if (
+                        phase == 2 &&
+                        !emergencyActive &&
+                        gameTime() >=
+                        supportLaunchUntil &&
+                        inRange(
+                            unitX(id),
+                            unitY(id),
+                            baseX(),
+                            baseY(),
+                            90
+                        )
+                    ) {
+                        defendUnitAt(
+                            id,
+                            baseX(),
+                            baseY()
+                        );
+                    } else {
+                        if (
+                            phase == 2 &&
+                            !emergencyActive &&
+                            frontGuide != "" &&
+                            unitExists(frontGuide)
+                        ) {
+                            moveUnitTo(
+                                id,
+                                unitX(frontGuide),
+                                unitY(frontGuide)
+                            );
+                        } else {
+                            if (
+                                weakest != "" &&
+                                unitExists(weakest) &&
+                                unitHealthRatio(
+                                    weakest
+                                ) < 0.85
+                            ) {
+                                moveUnitTo(
+                                    id,
+                                    unitX(weakest),
+                                    unitY(weakest)
+                                );
+                            } else {
+                                if (emergencyActive) {
+                                    moveUnitTo(
+                                        id,
+                                        defenseX,
+                                        defenseY
+                                    );
+                                } else {
+                                    moveUnitTo(
+                                        id,
+                                        economyGuardX,
+                                        economyGuardY
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+function positionEconomyGuards() {
+    let lancerGuards = 0;
+    let seerGuards = 0;
+    let wantedWardens = 3;
+    let wantedLongshots = 1;
+
+    lancerGuards = 0;
+    seerGuards = 0;
+    wantedWardens = 3;
+    wantedLongshots = 1;
+
+    if (phase == 2) {
+        if (mainArmyCount() < 16) {
+            return false;
+        }
+
+        wantedWardens = 2;
+        wantedLongshots = 1;
+    }
+
+    for (id in myUnitsOfType("Warden")) {
+        if (
+            unitExists(id) &&
+            unitHealthRatio(id) >= 0.35 &&
+            lancerGuards < wantedWardens
+        ) {
+            defendUnitAt(
+                id,
+                economyGuardX,
+                economyGuardY
+            );
+
+            lancerGuards = lancerGuards + 1;
+        }
+    }
+
+    for (id in myUnitsOfType("Longshot")) {
+        if (
+            unitExists(id) &&
+            unitHealthRatio(id) >= 0.5 &&
+            seerGuards < wantedLongshots
+        ) {
+            defendUnitAt(
+                id,
+                economyGuardX,
+                economyGuardY
+            );
+
+            seerGuards = seerGuards + 1;
+        }
+    }
+
+    return true;
+}
+
+function defendMainArmy(x, y) {
+    attackUnitsTo(
+        groundFighters(),
+        x,
+        y
+    );
+
+    attackUnitsTo(
+        airFighters(),
+        x,
+        y
+    );
+
+    for (id in myUnitsOfType("Medic")) {
+        if (unitExists(id)) {
+            if (unitHealthRatio(id) < 0.45) {
+                retreatUnit(id);
+            } else {
+                moveUnitTo(id, x, y);
+            }
+        }
+    }
+}
+
+function nearestBlockerToArmy(radius) {
+    let lead = "";
+    let blocker = "";
+
+    lead = closestUnitTo(mainFighters(), objectiveX, objectiveY);
+
+    if (lead == "" || !unitExists(lead)) {
+        return "";
+    }
+
+    blocker = nearestEnemyUnitTo(
+        unitX(lead),
+        unitY(lead),
+        radius
+    );
+
+    return blocker;
+}
+
+function beginObjective(x, y, mode, duration) {
+    objectiveX = x;
+    objectiveY = y;
+    decisionMode = mode;
+    decisionUntil = gameTime() + duration;
+    objectiveStarted = gameTime();
+    objectiveProgressTime = gameTime();
+    objectiveStalled = false;
+    objectiveLastDistance = distanceBetween(
+        formationX,
+        formationY,
+        x,
+        y
+    );
+    chaseAnchorX = formationX;
+    chaseAnchorY = formationY;
+}
+
+function updateObjectiveProgress() {
+    let lead = "";
+    let distance = 0;
+
+    lead = closestUnitTo(mainFighters(), objectiveX, objectiveY);
+
+    if (lead == "" || !unitExists(lead)) {
+        objectiveStalled = true;
+        return;
+    }
+
+    distance = distanceBetween(
+        unitX(lead),
+        unitY(lead),
+        objectiveX,
+        objectiveY
+    );
+
+    if (distance + 12 < objectiveLastDistance) {
+        objectiveLastDistance = distance;
+        objectiveProgressTime = gameTime();
+        objectiveStalled = false;
+    } else {
+        if (gameTime() - objectiveProgressTime > 9) {
+            objectiveStalled = true;
+        }
+    }
+}
+
+function blockerMustBeFought(target) {
+    let lead = "";
+    let distance = 0;
+
+    if (target == "" || !unitExists(target)) {
+        return false;
+    }
+
+    lead = closestUnitTo(mainFighters(), unitX(target), unitY(target));
+
+    if (lead == "" || !unitExists(lead)) {
+        return false;
+    }
+
+    distance = distanceBetween(
+        unitX(lead),
+        unitY(lead),
+        unitX(target),
+        unitY(target)
+    );
+
+    if (distance <= unitAttackRange(target) + 45) {
+        return true;
+    }
+
+    if (distance <= 95 && unitAttack(target) > 0) {
+        return true;
+    }
+
+    return false;
+}
+
+function objectiveDecision() {
+    let blocker = "";
+
+    updateLocalBattleModel();
+    calculateArmyHealth();
+    updateGlobalBattleModel();
+    updateObjectiveProgress();
+
+    // Checked first, ahead of the blocker check below — a losing fight
+    // needs to actually disengage, not get stuck perpetually re-triggering
+    // "focus this blocker and hold" every tick because a blocker is always
+    // in range once the armies have made contact.
+    if (
+        armyHealthScore < 0.48 ||
+        localPowerRatio < 0.68 ||
+        recentLosses >= 6
+    ) {
+        decisionMode = -1;
+        disengageUntil = gameTime() + 14;
+        return -1;
+    }
+
+    blocker = nearestBlockerToArmy(135);
+
+    if (blockerMustBeFought(blocker)) {
+        blockerTarget = blocker;
+        blockerUntil = gameTime() + 4;
+
+        // Winning locally (by this race's own bar for "winning" — see
+        // combatCommitThreshold)? Keep pushing through the blocker instead
+        // of parking here — microGroup()'s per-unit combat already fights
+        // anything in range while attack-moving, so advancing doesn't mean
+        // ignoring it, just not stalling on it. This — not a separate
+        // codepath — is what actually makes "swarm through resistance" vs.
+        // "hang back until the fight clearly favors you" differ by race.
+        if (localPowerRatio >= effectiveCommitThreshold()) {
+            decisionMode = 1;
+            return 1;
+        }
+
+        decisionMode = 2;
+        return 2;
+    }
+
+    // "Stalled" (see updateObjectiveProgress) just means the lead unit
+    // hasn't gotten closer lately — which is completely normal while it's
+    // busy winning a fight in place. Only actually hold for that if the
+    // fight *isn't* going the army's way either.
+    if (
+        (objectiveStalled || gameTime() >= decisionUntil) &&
+        localPowerRatio < effectiveCommitThreshold()
+    ) {
+        decisionMode = 0;
+        holdUntil = gameTime() + 6;
+        return 0;
+    }
+
+    if (
+        localPowerRatio < 1.0 &&
+        count(visibleEnemyUnits()) > 0
+    ) {
+        decisionMode = 0;
+        holdUntil = gameTime() + 5;
+        return 0;
+    }
+
+    decisionMode = 1;
+    return 1;
+}
+
+function executeObjectiveDecision() {
+    let choice = 0;
+
+    choice = objectiveDecision();
+
+    if (choice == -1) {
+        controlledDisengage();
+        return;
+    }
+
+    if (choice == 2) {
+        focusFireTarget(blockerTarget);
+        defendUnitsAt(mainFighters(), formationX, formationY);
+        return;
+    }
+
+    if (choice == 0) {
+        defendUnitsAt(mainFighters(), formationX, formationY);
+        return;
+    }
+
+    // Advancing through/past a blocker still worth concentrating fire on —
+    // keeps the push moving instead of trading evenly with everything in reach.
+    if (
+        blockerTarget != "" &&
+        unitExists(blockerTarget) &&
+        gameTime() < blockerUntil
+    ) {
+        focusFireTarget(blockerTarget);
+    }
+
+    attackUnitsTo(mainFighters(), objectiveX, objectiveY);
+}
+
+function commandAttackWave() {
+    supportLaunchUntil = gameTime() + 12;
+
+    calculateFormationAnchor();
+    // Push toward the inferred direction (see noteEnemyDirection()) when the
+    // enemy base hasn't actually been found yet, instead of just marching
+    // toward home base as enemyBaseX/Y() harmlessly fall back to — an
+    // educated guess from real attack history beats standing still.
+    beginObjective(
+        inferredEnemyBaseX(),
+        inferredEnemyBaseY(),
+        1,
+        28
+    );
+    executeObjectiveDecision();
+
+    positionEconomyGuards();
+    moveMedicsWithArmy();
+}
+
+function regroupMainArmy() {
+    moveUnitsTo(
+        groundFighters(),
+        baseX(),
+        baseY()
+    );
+
+    moveUnitsTo(
+        airFighters(),
+        baseX(),
+        baseY()
+    );
+
+    moveUnitsTo(
+        myUnitsOfType("Medic"),
+        baseX(),
+        baseY()
+    );
+}
+
+function commandNavy() {
+    let fleet = 0;
+    let enemies = 0;
+    let target = "";
+
+    fleet = navyCount();
+
+    if (fleet <= 0) {
+        return false;
+    }
+
+    if (gameTime() < navalRetreatUntil) {
+        retreatUnits(navalFighters());
+        return true;
+    }
+
+    if (navalRallyX == 0 && navalRallyY == 0) {
+        navalRallyX = baseX();
+        navalRallyY = baseY();
+    }
+
+    target = nearestEnemyUnitTo(
+        navalRallyX,
+        navalRallyY,
+        220
+    );
+    enemies = count(
+        enemyUnitsNear(
+            navalRallyX,
+            navalRallyY,
+            220
+        )
+    );
+
+    if (
+        target != "" &&
+        enemies <= fleet + 2
+    ) {
+        navalMode = 2;
+        navalObjectiveX = unitX(target);
+        navalObjectiveY = unitY(target);
+        attackUnitsTo(
+            navalFighters(),
+            navalObjectiveX,
+            navalObjectiveY
+        );
+        navalObjectiveUntil = gameTime() + 8;
+        return true;
+    }
+
+    if (enemies > fleet + 2) {
+        navalMode = -1;
+        navalRetreatUntil = gameTime() + 12;
+        retreatUnits(navalFighters());
+        return true;
+    }
+
+    if (fleet < 3) {
+        navalMode = 0;
+        defendUnitsAt(
+            navalFighters(),
+            navalRallyX,
+            navalRallyY
+        );
+        return true;
+    }
+
+    navalMode = 1;
+    navalObjectiveX = enemyBaseX();
+    navalObjectiveY = enemyBaseY();
+    attackUnitsTo(
+        navalFighters(),
+        navalObjectiveX,
+        navalObjectiveY
+    );
+    navalObjectiveUntil = gameTime() + 12;
+    return true;
+}
+
+function escapeCombatUnit(id, target) {
+    let escapeX = 0;
+    let escapeY = 0;
+    let differenceX = 0;
+    let differenceY = 0;
+
+    if (
+        target == "" ||
+        !unitExists(target)
+    ) {
+        retreatUnit(id);
+        return true;
+    }
+
+    differenceX =
+        unitX(id) - unitX(target);
+
+    differenceY =
+        unitY(id) - unitY(target);
+
+    if (
+        abs(differenceX) +
+        abs(differenceY) < 1
+    ) {
+        retreatUnit(id);
+        return true;
+    }
+
+    escapeX = clamp(
+        unitX(id) +
+        differenceX +
+        differenceX,
+        0,
+        mapWidth()
+    );
+
+    escapeY = clamp(
+        unitY(id) +
+        differenceY +
+        differenceY,
+        0,
+        mapHeight()
+    );
+
+    if (
+        distanceBetween(
+            unitX(id),
+            unitY(id),
+            escapeX,
+            escapeY
+        ) < 3
+    ) {
+        retreatUnit(id);
+    } else {
+        moveUnitTo(
+            id,
+            escapeX,
+            escapeY
+        );
+    }
+
+    return true;
+}
+
+function microGroup(
+    type,
+    canKite,
+    retreatRatio
+) {
+    for (id in myUnitsOfType(type)) {
+        if (unitExists(id)) {
+            let target = "";
+
+            if (
+                emergencyActive &&
+                defenseTarget != "" &&
+                unitExists(defenseTarget)
+            ) {
+                target = defenseTarget;
+            } else {
+                target = nearestEnemyUnitTo(
+                    unitX(id),
+                    unitY(id),
+                    max(
+                        unitSight(id) + 15,
+                        unitAttackRange(id) + 35
+                    )
+                );
+            }
+
+            if (
+                unitHealthRatio(id) <
+                retreatRatio
+            ) {
+                escapeCombatUnit(id, target);
+            } else {
+                if (target != "") {
+                    let distance = 0;
+                    let ownRange = 0;
+                    let targetRange = 0;
+                    let escapeX = 0;
+                    let escapeY = 0;
+                    let leashDistance = 0;
+                    let targetThreatening = false;
+                    let effectiveLeash = chaseLeash;
+
+                    distance =
+                        distanceBetween(
+                            unitX(id),
+                            unitY(id),
+                            unitX(target),
+                            unitY(target)
+                        );
+
+                    ownRange =
+                        unitAttackRange(id);
+
+                    targetRange =
+                        unitAttackRange(target);
+
+                    leashDistance = distanceBetween(
+                        unitX(id),
+                        unitY(id),
+                        formationX,
+                        formationY
+                    );
+
+                    targetThreatening = (
+                        distance <= targetRange + 18 ||
+                        inRange(
+                            unitX(target),
+                            unitY(target),
+                            objectiveX,
+                            objectiveY,
+                            90
+                        )
+                    );
+
+                    // "Don't let it breathe" — with the enemy's whole visible
+                    // army (not just this fight) clearly broken, chase a
+                    // fleeing target much further before giving up and
+                    // snapping back to formation. See updateGlobalBattleModel().
+                    if (pursuitMode) {
+                        effectiveLeash = chaseLeash * 3;
+                    }
+
+                    if (
+                        !emergencyActive &&
+                        leashDistance > effectiveLeash &&
+                        !targetThreatening
+                    ) {
+                        defendUnitAt(
+                            id,
+                            formationX,
+                            formationY
+                        );
+                    } else {
+
+                        if (
+                            canKite &&
+                            ownRange > targetRange &&
+                            distance <=
+                            targetRange + 3 &&
+                            kiteStep == 1 &&
+                            (
+                                unitSpeed(id) >=
+                                unitSpeed(target) ||
+                                ownRange >
+                                targetRange +
+                                targetRange
+                            )
+                        ) {
+                            escapeX = clamp(
+                                unitX(id) +
+                                (
+                                    unitX(id) -
+                                    unitX(target)
+                                ),
+                                0,
+                                mapWidth()
+                            );
+
+                            escapeY = clamp(
+                                unitY(id) +
+                                (
+                                    unitY(id) -
+                                    unitY(target)
+                                ),
+                                0,
+                                mapHeight()
+                            );
+
+                            moveUnitTo(
+                                id,
+                                escapeX,
+                                escapeY
+                            );
+                        } else {
+                            attackUnit(id, target);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+function runCombatMicro() {
+    if (finishing) {
+        return false;
+    }
+
+    if (gameTime() < nextCombatMicro) {
+        return false;
+    }
+
+    microGroup("Warden", false, 0.18);
+    microGroup("Bastion", false, 0.22);
+    microGroup("Breaker", true, 0.34);
+    microGroup("Longshot", true, 0.34);
+    microGroup("Thunderhead", true, 0.38);
+    microGroup("Shrike", true, 0.3);
+    microGroup("Harrier", true, 0.34);
+    microGroup("Cutlass", true, 0.28);
+    microGroup("Undertow", true, 0.32);
+    microGroup("Leviathan", true, 0.22);
+
+    moveMedicsWithArmy();
+
+    if (kiteStep == 0) {
+        kiteStep = 1;
+    } else {
+        kiteStep = 0;
+    }
+
+    nextCombatMicro = gameTime() + 1;
+    return true;
+}
+
+function barracksDelay() {
+    return clamp(
+        4 - buildingCount("barracks"),
+        1,
+        3
+    );
+}
+
+function updateCompositionPlan() {
+    let army = 0;
+    let enemyNearBase = 0;
+    let infrastructure = 0;
+
+    if (gameTime() < compositionTick) {
+        return;
+    }
+
+    army = mainArmyCount();
+    enemyNearBase = count(
+        enemyUnitsNear(baseX(), baseY(), 230)
+    );
+    enemyLightBias = max(0, enemyLightBias - 1);
+    enemyArmorBias = max(0, enemyArmorBias - 1);
+    enemyAirBias = max(0, enemyAirBias - 1);
+    enemyStructureBias = max(
+        0,
+        count(visibleEnemyBuildings())
+    );
+
+    for (enemy in visibleEnemyUnits()) {
+        if (unitDomain(enemy) == "air") {
+            enemyAirBias = enemyAirBias + 1;
+        }
+        if (
+            unitClass(enemy) == "armor" ||
+            unitClass(enemy) == "artillery" ||
+            unitDomain(enemy) == "sea"
+        ) {
+            enemyArmorBias = enemyArmorBias + 1;
+        } else {
+            enemyLightBias = enemyLightBias + 1;
+        }
+    }
+    infrastructure =
+        buildingCount("barracks") * 7 +
+        buildingCount("factory") * 9 +
+        buildingCount("outpost") * 2;
+
+    desiredArmyCap = clamp(
+        20 + infrastructure,
+        26,
+        64
+    );
+
+    if (incomeRate < 3) {
+        desiredArmyCap = min(desiredArmyCap, 38);
+    }
+
+    if (resources() < reserveResources) {
+        desiredArmyCap = min(desiredArmyCap, max(28, army));
+    }
+
+    desiredWarden = max(
+        6,
+        ceil(desiredArmyCap * 0.22) + floor(enemyLightBias / 5)
+    );
+    desiredBreaker = max(
+        4,
+        ceil(desiredArmyCap * 0.20) +
+        ceil((enemyArmorBias + enemyStructureBias) / 3) +
+        ceil(enemyAirBias / 4)
+    );
+    desiredLongshot = max(
+        3,
+        ceil(desiredArmyCap * 0.16) +
+        ceil((enemyLightBias + enemyAirBias) / 5)
+    );
+    desiredMedic = clamp(ceil(desiredArmyCap / 16), 1, 4);
+    lancerEmergencyNeed = clamp(enemyNearBase + 3, 4, 14);
+    researchReserve = reserveResources + 260;
+
+    infantryProductionMode = 1;
+
+    if (army >= desiredArmyCap) {
+        infantryProductionMode = 0;
+    }
+
+    if (
+        unitCount("Warden") > desiredWarden + 2 &&
+        !emergencyActive
+    ) {
+        infantryProductionMode = 2;
+    }
+
+    if (emergencyActive) {
+        infantryProductionMode = 3;
+    }
+
+    compositionTick = gameTime() + 4;
+}
+
+function armyProductionCapped() {
+    updateCompositionPlan();
+
+    if (emergencyActive) {
+        return false;
+    }
+
+    if (mainArmyCount() < desiredArmyCap) {
+        return false;
+    }
+
+    if (recentLosses >= 4) {
+        return false;
+    }
+
+    productionCapUntil = gameTime() + 5;
+    return true;
+}
+
+function shouldSaveForResearch() {
+    if (emergencyActive) {
+        return false;
+    }
+
+    if (!hasBuilding("researchLab")) {
+        return false;
+    }
+
+    if (mainArmyCount() < 16) {
+        return false;
+    }
+
+    if (
+        hasResearch("advancedBallistics") &&
+        hasResearch("aerialEngineering") &&
+        hasResearch("supportSystems") &&
+        (
+            !waterAvailable ||
+            hasResearch("navalEngineering")
+        )
+    ) {
+        return false;
+    }
+
+    return resources() < researchReserve;
+}
+
+function factoryDelay() {
+    return clamp(
+        8 -
+        buildingCount("factory") -
+        buildingCount("factory"),
+        4,
+        7
+    );
+}
+
+function produceFabricator() {
+    if (
+        unitCount("Fabricator") <
+        desiredFabricators() &&
+        gameTime() >= nextFabricatorTrain &&
+        queueOpen("commandCenter", 2)
+    ) {
+        if (train("Fabricator")) {
+            nextFabricatorTrain = gameTime() + 6;
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function produceBarracksUnit() {
+    updateCompositionPlan();
+
+    if (
+        !hasBuilding("barracks") ||
+        gameTime() < nextBarracksTrain ||
+        !queueOpen("barracks", 2)
+    ) {
+        return false;
+    }
+
+    replacementScoutUrgent =
+        unitCount("Lynx") < 2;
+
+    if (replacementScoutUrgent) {
+        if (train("Lynx")) {
+            nextBarracksTrain = gameTime() + 4;
+            return true;
+        }
+    }
+
+    if (armyProductionCapped()) {
+        nextBarracksTrain = gameTime() + 4;
+        return false;
+    }
+
+    if (shouldSaveForExpansion()) {
+        nextBarracksTrain = gameTime() + 4;
+        return false;
+    }
+
+    if (shouldSaveForResearch()) {
+        nextBarracksTrain = gameTime() + 4;
+        return false;
+    }
+
+    if (unitCount("Lynx") < 1) {
+        if (train("Lynx")) {
+            nextBarracksTrain = gameTime() + 4;
+            return true;
+        }
+    }
+
+    if (unitCount("Warden") < min(6, desiredWarden)) {
+        if (train("Warden")) {
+            nextBarracksTrain =
+                gameTime() + barracksDelay();
+
+            return true;
+        }
+    }
+
+    if (unitCount("Breaker") < 2) {
+        if (train("Breaker")) {
+            nextBarracksTrain =
+                gameTime() + barracksDelay();
+
+            return true;
+        }
+    }
+
+    if (unitCount("Longshot") < 2) {
+        if (train("Longshot")) {
+            nextBarracksTrain =
+                gameTime() + barracksDelay();
+
+            return true;
+        }
+    }
+
+    if (
+        gameTime() >= 55 &&
+        unitCount("Lynx") < 2
+    ) {
+        if (train("Lynx")) {
+            nextBarracksTrain = gameTime() + 4;
+            return true;
+        }
+    }
+
+    if (
+        hasBuilding("researchLab") &&
+        mainArmyCount() >= 8 &&
+        unitCount("Medic") < 1
+    ) {
+        if (train("Medic")) {
+            nextBarracksTrain = gameTime() + 5;
+            return true;
+        }
+    }
+
+    if (
+        hasBuilding("researchLab") &&
+        mainArmyCount() >= 17 &&
+        unitCount("Medic") < 2
+    ) {
+        if (train("Medic")) {
+            nextBarracksTrain = gameTime() + 5;
+            return true;
+        }
+    }
+
+    if (
+        recentLosses >= 4 &&
+        unitCount("Warden") < desiredWarden
+    ) {
+        if (train("Warden")) {
+            nextBarracksTrain =
+                gameTime() + barracksDelay();
+
+            return true;
+        }
+    }
+
+    if (
+        unitCount("Breaker") < desiredBreaker
+    ) {
+        if (train("Breaker")) {
+            nextBarracksTrain =
+                gameTime() + barracksDelay();
+            return true;
+        }
+    }
+
+    if (
+        unitCount("Longshot") < desiredLongshot
+    ) {
+        if (train("Longshot")) {
+            nextBarracksTrain =
+                gameTime() + barracksDelay();
+            return true;
+        }
+    }
+
+    if (
+        hasBuilding("researchLab") &&
+        unitCount("Medic") < desiredMedic
+    ) {
+        if (train("Medic")) {
+            nextBarracksTrain = gameTime() + 5;
+            return true;
+        }
+    }
+
+    if (
+        infantryCycle == 0 &&
+        unitCount("Warden") >= desiredWarden
+    ) {
+        infantryCycle = 1;
+    }
+
+    if (
+        infantryCycle == 0 &&
+        unitCount("Warden") < desiredWarden
+    ) {
+        if (train("Warden")) {
+            infantryCycle = 1;
+
+            nextBarracksTrain =
+                gameTime() + barracksDelay();
+
+            return true;
+        }
+    }
+
+    if (infantryCycle == 1) {
+        if (train("Breaker")) {
+            infantryCycle = 2;
+
+            nextBarracksTrain =
+                gameTime() + barracksDelay();
+
+            return true;
+        }
+    }
+
+    if (infantryCycle == 2) {
+        if (train("Longshot")) {
+            infantryCycle = 3;
+
+            nextBarracksTrain =
+                gameTime() + barracksDelay();
+
+            return true;
+        }
+    }
+
+    if (infantryCycle == 3) {
+        if (train("Breaker")) {
+            infantryCycle = 0;
+
+            nextBarracksTrain =
+                gameTime() + barracksDelay();
+
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function produceFactoryUnit() {
+    updateCompositionPlan();
+
+    if (
+        !hasBuilding("factory") ||
+        gameTime() < nextFactoryTrain ||
+        !queueOpen("factory", 2)
+    ) {
+        return false;
+    }
+
+    if (armyProductionCapped()) {
+        nextFactoryTrain = gameTime() + 5;
+        return false;
+    }
+
+    if (shouldSaveForExpansion()) {
+        nextFactoryTrain = gameTime() + 5;
+        return false;
+    }
+
+    if (shouldSaveForResearch()) {
+        nextFactoryTrain = gameTime() + 5;
+        return false;
+    }
+
+    if (unitCount("Bastion") < 4) {
+        if (train("Bastion")) {
+            nextFactoryTrain =
+                gameTime() + factoryDelay();
+
+            return true;
+        }
+    }
+
+    if (
+        hasResearch("advancedBallistics") &&
+        unitCount("Thunderhead") < 3
+    ) {
+        if (train("Thunderhead")) {
+            nextFactoryTrain = gameTime() + 8;
+            return true;
+        }
+    }
+
+    if (
+        hasResearch("aerialEngineering") &&
+        unitCount("Shrike") < 1
+    ) {
+        if (train("Shrike")) {
+            nextFactoryTrain = gameTime() + 8;
+            return true;
+        }
+    }
+
+    if (
+        hasResearch("aerialEngineering") &&
+        unitCount("Harrier") < 1
+    ) {
+        if (train("Harrier")) {
+            nextFactoryTrain = gameTime() + 10;
+            return true;
+        }
+    }
+
+    if (!hasResearch("advancedBallistics")) {
+        if (train("Bastion")) {
+            nextFactoryTrain =
+                gameTime() + factoryDelay();
+
+            return true;
+        }
+    }
+
+    if (factoryCycle == 0) {
+        if (train("Bastion")) {
+            factoryCycle = 1;
+
+            nextFactoryTrain =
+                gameTime() + factoryDelay();
+
+            return true;
+        }
+    }
+
+    if (factoryCycle == 1) {
+        if (train("Thunderhead")) {
+            factoryCycle = 2;
+            nextFactoryTrain = gameTime() + 8;
+            return true;
+        }
+    }
+
+    if (factoryCycle == 2) {
+        if (hasResearch("aerialEngineering")) {
+            if (train("Shrike")) {
+                factoryCycle = 3;
+
+                nextFactoryTrain =
+                    gameTime() + 8;
+
+                return true;
+            }
+        } else {
+            if (train("Bastion")) {
+                factoryCycle = 0;
+
+                nextFactoryTrain =
+                    gameTime() + factoryDelay();
+
+                return true;
+            }
+        }
+    }
+
+    if (factoryCycle == 3) {
+        if (train("Harrier")) {
+            factoryCycle = 0;
+            nextFactoryTrain = gameTime() + 10;
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function produceNavy() {
+    updateCompositionPlan();
+
+    if (
+        !waterAvailable ||
+        !hasBuilding("shipyard") ||
+        !hasResearch("navalEngineering") ||
+        gameTime() < nextNavalTrain ||
+        !queueOpen("shipyard", 2) ||
+        resources() <= reserveResources
+    ) {
+        return false;
+    }
+
+    if (shouldSaveForExpansion()) {
+        nextNavalTrain = gameTime() + 6;
+        return false;
+    }
+
+    if (
+        navyCount() >= desiredNaval &&
+        mainArmyCount() >= desiredArmyCap
+    ) {
+        nextNavalTrain = gameTime() + 7;
+        return false;
+    }
+
+    if (unitCount("Cutlass") < 2) {
+        if (train("Cutlass")) {
+            nextNavalTrain = gameTime() + 9;
+            return true;
+        }
+    }
+
+    if (unitCount("Undertow") < 1) {
+        if (train("Undertow")) {
+            nextNavalTrain = gameTime() + 10;
+            return true;
+        }
+    }
+
+    if (unitCount("Leviathan") < 1) {
+        if (train("Leviathan")) {
+            nextNavalTrain = gameTime() + 15;
+            return true;
+        }
+    }
+
+    if (
+        navyCount() >= max(6, desiredNaval) &&
+        resources() < reserveResources + 350
+    ) {
+        nextNavalTrain = gameTime() + 8;
+        return false;
+    }
+
+    if (navalCycle == 0) {
+        if (train("Cutlass")) {
+            navalCycle = 1;
+            nextNavalTrain = gameTime() + 9;
+            return true;
+        }
+    }
+
+    if (navalCycle == 1) {
+        if (train("Undertow")) {
+            navalCycle = 2;
+            nextNavalTrain = gameTime() + 10;
+            return true;
+        }
+    }
+
+    if (navalCycle == 2) {
+        if (train("Leviathan")) {
+            navalCycle = 0;
+            nextNavalTrain = gameTime() + 15;
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function desiredBarracks() {
+    if (gameTime() >= 560) {
+        return 3;
+    }
+
+    if (gameTime() >= 240) {
+        return 2;
+    }
+
+    return 1;
+}
+
+function desiredFactories() {
+    if (gameTime() >= 390) {
+        return 2;
+    }
+
+    return 1;
+}
+
+function desiredBaseTurrets() {
+    let value = 1;
+    let localThreat = count(enemyUnitsNear(baseX(), baseY(), 260));
+
+    if (localThreat >= 2 || commandCenterUnderAttack()) {
+        value = value + 1;
+    }
+
+    if (localThreat >= 7 && armyStrength() < enemyPressure * 13 + 40) {
+        value = value + 1;
+    }
+
+    if (mainArmyCount() >= 18 && buildingCount("outpost") >= 2) {
+        value = value + 1;
+    }
+
+    if (economicWarning || resources() < reserveResources + 90) {
+        value = value - 1;
+    }
+
+    return clamp(value, 0, 3);
+}
+
+function desiredTotalGazeTurrets() {
+    let value = desiredBaseTurrets();
+    let exposedTerritory = 0;
+
+    for (outpost in myBuildingsOfType("outpost")) {
+        if (
+            buildingExists(outpost) &&
+            !buildingUnderConstruction(outpost) &&
+            count(enemyUnitsNear(buildingX(outpost), buildingY(outpost), 250)) > 0
+        ) {
+            exposedTerritory = exposedTerritory + 1;
+        }
+    }
+
+    value = value + min(2, exposedTerritory);
+
+    if (
+        !economicWarning &&
+        resources() > reserveResources + 360 &&
+        buildingCount("outpost") >= 3
+    ) {
+        value = value + 1;
+    }
+
+    return clamp(value, 0, 6);
+}
+
+function shouldBuildGazeTurret() {
+    if (buildingCount("turret") >= desiredTotalGazeTurrets()) {
+        return false;
+    }
+
+    if (economicWarning || expansionSavingsActive) {
+        return commandCenterUnderAttack();
+    }
+
+    if (resources() <= reserveResources + 100) {
+        return false;
+    }
+
+    return true;
+}
+
+function baseTurretCount() {
+    let nearby = 0;
+    nearby = 0;
+
+    for (
+        building in
+        myBuildingsOfType("turret")
+    ) {
+        if (
+            buildingExists(building) &&
+            inRange(
+                buildingX(building),
+                buildingY(building),
+                baseX(),
+                baseY(),
+                20
+            )
+        ) {
+            nearby = nearby + 1;
+        }
+    }
+
+    return nearby;
+}
+
+function fortifyOneOutpost() {
+    if (!shouldBuildGazeTurret()) {
+        return false;
+    }
+
+    for (
+        outpost in
+        myBuildingsOfType("outpost")
+    ) {
+        if (
+            buildingExists(outpost) &&
+            !buildingUnderConstruction(outpost) &&
+            !buildingNear(
+                "turret",
+                buildingX(outpost),
+                buildingY(outpost),
+                95
+            )
+        ) {
+            let turretX = 0;
+            let turretY = 0;
+
+            turretX = clamp(
+                buildingX(outpost) + 70,
+                0,
+                mapWidth()
+            );
+
+            turretY = buildingY(outpost);
+
+            if (
+                isValidBuildSpot(
+                    turretX,
+                    turretY
+                ) &&
+                constructAt(
+                    "turret",
+                    turretX,
+                    turretY
+                )
+            ) {
+                return true;
+            }
+
+            turretX = clamp(
+                buildingX(outpost) - 70,
+                0,
+                mapWidth()
+            );
+
+            if (
+                isValidBuildSpot(
+                    turretX,
+                    turretY
+                ) &&
+                constructAt(
+                    "turret",
+                    turretX,
+                    turretY
+                )
+            ) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+// A resource node the AI already relies on (covered, being mined) that's
+// currently unsafe to mine (see coveredNodeSafeToMine) gets a turret of its
+// own instead of just relying on evacuateUnsafeMine()/rebalanceCoveredMines()
+// to keep pulling workers off it — so the next time an enemy unit wanders
+// by, the node defends itself and mining can resume without the main army
+// needing to be pulled back to babysit it. Same turret budget as
+// shouldBuildGazeTurret()/desiredTotalGazeTurrets() everywhere else, so this
+// doesn't uncap total turret spending — it just reprioritizes toward
+// whichever spot is actually under threat right now.
+function fortifyThreatenedNode() {
+    if (!shouldBuildGazeTurret()) {
+        return false;
+    }
+
+    for (node in knownResourceNodes()) {
+        if (
+            nodeExists(node) &&
+            nodeCovered(node) &&
+            !coveredNodeSafeToMine(node) &&
+            !buildingNear("turret", nodeX(node), nodeY(node), 140)
+        ) {
+            let turretX = 0;
+            let turretY = 0;
+
+            turretX = clamp(nodeX(node) + 60, 0, mapWidth());
+            turretY = nodeY(node);
+
+            if (
+                isValidBuildSpot(turretX, turretY) &&
+                constructAt("turret", turretX, turretY)
+            ) {
+                return true;
+            }
+
+            turretX = clamp(nodeX(node) - 60, 0, mapWidth());
+
+            if (
+                isValidBuildSpot(turretX, turretY) &&
+                constructAt("turret", turretX, turretY)
+            ) {
+                return true;
+            }
+
+            turretX = nodeX(node);
+            turretY = clamp(nodeY(node) + 60, 0, mapHeight());
+
+            if (
+                isValidBuildSpot(turretX, turretY) &&
+                constructAt("turret", turretX, turretY)
+            ) {
+                return true;
+            }
+
+            turretY = clamp(nodeY(node) - 60, 0, mapHeight());
+
+            if (
+                isValidBuildSpot(turretX, turretY) &&
+                constructAt("turret", turretX, turretY)
+            ) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+function manageConstruction() {
+    if (gameTime() < nextBuildAttempt) {
+        return false;
+    }
+
+    if (fortifyThreatenedNode()) {
+        nextBuildAttempt = gameTime() + 10;
+        return true;
+    }
+
+    if (
+        !hasBuilding("researchLab") &&
+        hasBuilding("factory") &&
+        mainArmyCount() >= 9 &&
+        gameTime() >= 110 &&
+        !expansionSavingsActive
+    ) {
+        if (construct("researchLab")) {
+            nextBuildAttempt = gameTime() + 12;
+            return true;
+        }
+    }
+
+    if (
+        buildingCount("outpost") <
+        desiredOutposts()
+    ) {
+        if (manageSafeExpansion()) {
+            nextBuildAttempt = gameTime() + 10;
+            nextMineScan = gameTime();
+            return true;
+        }
+    }
+
+    if (
+        shouldBuildGazeTurret() &&
+        baseTurretCount() < desiredBaseTurrets()
+    ) {
+        if (construct("turret")) {
+            nextBuildAttempt = gameTime() + 10;
+            return true;
+        }
+    }
+
+    if (shouldBuildGazeTurret() && fortifyOneOutpost()) {
+        nextBuildAttempt = gameTime() + 10;
+        return true;
+    }
+
+    if (
+        buildingCount("barracks") <
+        desiredBarracks()
+    ) {
+        if (construct("barracks")) {
+            nextBuildAttempt = gameTime() + 12;
+            return true;
+        }
+    }
+
+    if (
+        buildingCount("factory") <
+        desiredFactories()
+    ) {
+        if (construct("factory")) {
+            nextBuildAttempt = gameTime() + 14;
+            return true;
+        }
+    }
+
+    if (
+        waterAvailable &&
+        !hasBuilding("shipyard") &&
+        hasBuilding("researchLab") &&
+        gameTime() >= 150 &&
+        resources() > reserveResources + 160
+    ) {
+        if (construct("shipyard")) {
+            nextBuildAttempt = gameTime() + 25;
+            return true;
+        }
+    }
+
+    nextBuildAttempt = gameTime() + 7;
+    return false;
+}
+
+function manageResearch() {
+    let bestResearch = "";
+    let bestScore = -9999;
+    let score = 0;
+
+    if (
+        !hasBuilding("researchLab") ||
+        gameTime() < nextResearchAttempt
+    ) {
+        return false;
+    }
+
+    if (shouldSaveForExpansion()) {
+        nextResearchAttempt = gameTime() + 5;
+        return false;
+    }
+
+    if (!hasResearch("fieldLogistics")) {
+        score =
+            unitCount("Fabricator") * 12 +
+            buildingCount("outpost") * 34 +
+            productiveCoveredNodes * 22;
+        if (economicWarning) {
+            score = score + 80;
+        }
+        if (score > bestScore) {
+            bestScore = score;
+            bestResearch = "fieldLogistics";
+        }
+    }
+
+    if (!hasResearch("infantryTactics")) {
+        score =
+            unitCount("Warden") * 18 +
+            unitCount("Breaker") * 10 +
+            unitCount("Longshot") * 10;
+        if (enemyPressure > 0) {
+            score = score + 45;
+        }
+        if (score > bestScore) {
+            bestScore = score;
+            bestResearch = "infantryTactics";
+        }
+    }
+
+    if (!hasResearch("compositeArmor")) {
+        score =
+            unitCount("Bastion") * 28 +
+            frontlineCount() * 8 +
+            recentLosses * 10;
+        if (commandCenterUnderAttack()) {
+            score = score + 55;
+        }
+        if (score > bestScore) {
+            bestScore = score;
+            bestResearch = "compositeArmor";
+        }
+    }
+
+    if (!hasResearch("advancedBallistics")) {
+        score =
+            unitCount("Breaker") * 22 +
+            unitCount("Longshot") * 24 +
+            unitCount("Thunderhead") * 32;
+        if (score > bestScore) {
+            bestScore = score;
+            bestResearch = "advancedBallistics";
+        }
+    }
+
+    if (!hasResearch("aerialEngineering")) {
+        score =
+            unitCount("Shrike") * 30 +
+            unitCount("Harrier") * 34;
+        if (waterAvailable) {
+            score = score + 18;
+        }
+        if (score > bestScore) {
+            bestScore = score;
+            bestResearch = "aerialEngineering";
+        }
+    }
+
+    if (!hasResearch("navalEngineering")) {
+        score = -40;
+        if (waterAvailable) {
+            score = score + 70;
+        }
+        if (hasBuilding("shipyard")) {
+            score = score + 80;
+        }
+        score = score + navyCount() * 32;
+        if (score > bestScore) {
+            bestScore = score;
+            bestResearch = "navalEngineering";
+        }
+    }
+
+    if (!hasResearch("supportSystems")) {
+        score =
+            unitCount("Medic") * 38 +
+            unitCount("Fabricator") * 8 +
+            damagedArmyCount * 9;
+        if (buildingCount("outpost") >= 2) {
+            score = score + 25;
+        }
+        if (score > bestScore) {
+            bestScore = score;
+            bestResearch = "supportSystems";
+        }
+    }
+
+    if (bestResearch != "" && research(bestResearch)) {
+        nextResearchAttempt = gameTime() + 12;
+        return true;
+    }
+
+    nextResearchAttempt = gameTime() + 4;
+    return false;
+}
+
+function readyToAttack() {
+    if (
+        mainArmyCount() >= requiredArmy &&
+        frontlineCount() >= 4 &&
+        rangedCount() >= 2
+    ) {
+        return true;
+    }
+
+    if (
+        gameTime() >= attackDeadline &&
+        mainArmyCount() >= 10 &&
+        frontlineCount() >= 3
+    ) {
+        return true;
+    }
+
+    return false;
+}
+
+function beginGrouping() {
+    phase = 4;
+    groupingStarted = gameTime();
+    groupingDeadline = gameTime() + 30;
+    groupingTargetCount = mainArmyCount();
+    stagingX = baseX();
+    stagingY = baseY();
+    nextArmyOrder = gameTime();
+
+    rallyAt(stagingX, stagingY);
+    regroupMainArmy();
+}
+
+function commandGrouping() {
+    rallyAt(stagingX, stagingY);
+
+    moveUnitsTo(
+        mainFighters(),
+        stagingX,
+        stagingY
+    );
+
+    moveUnitsTo(
+        myUnitsOfType("Medic"),
+        stagingX,
+        stagingY
+    );
+}
+
+function groupingReady() {
+    let nearby = 0;
+    let frontNearby = 0;
+    let needed = 0;
+    let emergencyNeeded = 0;
+
+    nearby = fightersNearPoint(
+        stagingX,
+        stagingY,
+        85
+    );
+
+    frontNearby = frontlinersNearPoint(
+        stagingX,
+        stagingY,
+        85
+    );
+
+    needed = max(
+        10,
+        ceil(
+            (
+                groupingTargetCount +
+                groupingTargetCount +
+                groupingTargetCount +
+                groupingTargetCount
+            ) / 5
+        )
+    );
+
+    emergencyNeeded = max(
+        8,
+        ceil(
+            (
+                groupingTargetCount +
+                groupingTargetCount +
+                groupingTargetCount
+            ) / 5
+        )
+    );
+
+    if (
+        gameTime() >= groupingStarted + 5 &&
+        nearby >= needed &&
+        frontNearby >= 4
+    ) {
+        return true;
+    }
+
+    if (
+        gameTime() >= groupingDeadline &&
+        nearby >= emergencyNeeded &&
+        frontNearby >= 3
+    ) {
+        return true;
+    }
+
+    return false;
+}
+
+function launchAttack() {
+    phase = 2;
+    launchPower = currentPower;
+    launchCount = mainArmyCount();
+    lossesAtLaunch = unitsLost();
+    battleOutcomeRecorded = false;
+
+    requiredArmy = min(
+        requiredArmy + 2,
+        24
+    );
+
+    commandAttackWave();
+}
+
+function attackCollapsed() {
+    let waveLosses = 0;
+    let toleratedLosses = 0;
+
+    waveLosses =
+        unitsLost() - lossesAtLaunch;
+
+    toleratedLosses = max(
+        3,
+        floor(launchCount / 3)
+    );
+
+    if (frontlineCount() < 2) {
+        return true;
+    }
+
+    if (waveLosses >= toleratedLosses) {
+        return true;
+    }
+
+    if (
+        currentPower +
+        currentPower +
+        currentPower <
+        launchPower +
+        launchPower
+    ) {
+        return true;
+    }
+
+    if (
+        mainArmyCount() +
+        mainArmyCount() +
+        mainArmyCount() <
+        launchCount +
+        launchCount
+    ) {
+        return true;
+    }
+
+    return false;
+}
+
+function beginRecovery() {
+    phase = 3;
+    regroupUntil = gameTime() + 18;
+    attackDeadline = gameTime() + 85;
+
+    retreatUnits(mainFighters());
+    regroupMainArmy();
+}
+
+function brainConsider(goal, score) {
+    let adjusted = 0;
+
+    adjusted = score;
+
+    if (goal == brainGoal) {
+        adjusted = adjusted + brainCurrentGoalBonus;
+    }
+
+    if (
+        brainStalled &&
+        goal == brainGoal
+    ) {
+        adjusted = adjusted - 180;
+    }
+
+    if (adjusted > brainBestScore) {
+        brainBestScore = adjusted;
+        brainBestGoal = goal;
+    }
+}
+
+function brainMeasureKnowledge() {
+    brainKnownUsefulNodes = 0;
+    brainUncoveredNodes = 0;
+
+    for (node in knownResourceNodes()) {
+        if (
+            nodeExists(node) &&
+            nodeRemaining(node) > 0
+        ) {
+            brainKnownUsefulNodes =
+                brainKnownUsefulNodes + 1;
+
+            if (!nodeCovered(node)) {
+                brainUncoveredNodes =
+                    brainUncoveredNodes + 1;
+            }
+        }
+    }
+
+    brainKnowledgeNeed = 0;
+
+    if (brainKnownUsefulNodes <= 1) {
+        brainKnowledgeNeed = 100;
+    } else {
+        if (brainKnownUsefulNodes <= 3) {
+            brainKnowledgeNeed = 55;
+        }
+    }
+
+    if (economicWarning) {
+        brainKnowledgeNeed =
+            brainKnowledgeNeed + 65;
+    }
+
+    if (economicCrisis) {
+        brainKnowledgeNeed =
+            brainKnowledgeNeed + 120;
+    }
+}
+
+function brainMeasureReadiness() {
+    brainArmyReadiness = 0;
+
+    if (mainArmyCount() >= requiredArmy) {
+        brainArmyReadiness =
+            brainArmyReadiness + 40;
+    }
+
+    if (frontlineCount() >= 4) {
+        brainArmyReadiness =
+            brainArmyReadiness + 20;
+    }
+
+    if (rangedCount() >= 3) {
+        brainArmyReadiness =
+            brainArmyReadiness + 20;
+    }
+
+    if (armyHealthScore >= 0.72) {
+        brainArmyReadiness =
+            brainArmyReadiness + 25;
+    } else {
+        brainArmyReadiness =
+            brainArmyReadiness - 35;
+    }
+
+    if (recentLosses >= 4) {
+        brainArmyReadiness =
+            brainArmyReadiness -
+            recentLosses * 8;
+    }
+
+    if (localPowerRatio > 1.35) {
+        brainArmyReadiness =
+            brainArmyReadiness + 25;
+    }
+}
+
+function brainMeasureEconomy() {
+    brainEconomyHealth = 0;
+
+    if (incomeRate >= 6) {
+        brainEconomyHealth =
+            brainEconomyHealth + 60;
+    } else {
+        if (incomeRate >= 3) {
+            brainEconomyHealth =
+                brainEconomyHealth + 30;
+        } else {
+            brainEconomyHealth =
+                brainEconomyHealth - 50;
+        }
+    }
+
+    if (productiveCoveredNodes >= 2) {
+        brainEconomyHealth =
+            brainEconomyHealth + 35;
+    }
+
+    if (economicWarning) {
+        brainEconomyHealth =
+            brainEconomyHealth - 60;
+    }
+
+    if (economicCrisis) {
+        brainEconomyHealth =
+            brainEconomyHealth - 150;
+    }
+
+    if (resources() >= reserveResources) {
+        brainEconomyHealth =
+            brainEconomyHealth + 25;
+    }
+}
+
+function brainObserve() {
+    detectWaterMap();
+    scanMineNetwork();
+    scanWorkerThreats();
+    scanBaseThreats();
+    scanAssetThreats();
+    scanArmyThreats();
+    selectDefenseTarget();
+    updateStrategicModes();
+    updateIncomeModel();
+    updateLossModel();
+    calculateArmyHealth();
+    updateLocalBattleModel();
+    updateGlobalBattleModel();
+    computeResourceReserve();
+    updateEconomicRunway();
+    updateCompositionPlan();
+    protectCargoReturns();
+    currentPower = calculateMainPower();
+    enemyBaseDistance = distanceBetween(
+        baseX(),
+        baseY(),
+        enemyBaseX(),
+        enemyBaseY()
+    );
+
+    // armyThreat counts every visible enemy near your main fighters — while
+    // actively pushing an attack (phase 2) that's just combat happening, not
+    // a reason to score Defend higher and abort the attack. selectDefenseTarget()
+    // already excludes armyThreat from triggering emergencyNow during phase 2
+    // for the same reason; this keeps brainThreatLevel's baseline consistent
+    // with that instead of still spiking scoreDefend off the very fight the
+    // AI is supposed to be winning.
+    brainThreatLevel =
+        baseThreat * 3 +
+        workerThreat * 2 +
+        assetThreat * 2;
+
+    if (phase != 2) {
+        brainThreatLevel = brainThreatLevel + armyThreat;
+    }
+
+    brainVisibleBuildings =
+        count(visibleEnemyBuildings());
+
+    brainMeasureKnowledge();
+    brainMeasureReadiness();
+    brainMeasureEconomy();
+
+    expansionTick = gameTime();
+    brainCandidateNode = chooseSafeExpansion();
+
+    if (
+        resources() != brainLastResources ||
+        mainArmyCount() != brainLastArmy ||
+        buildingsConstructed() != brainLastBuildings ||
+        brainKnownUsefulNodes != brainLastKnownNodes
+    ) {
+        brainProgressTime = gameTime();
+        brainLastResources = resources();
+        brainLastArmy = mainArmyCount();
+        brainLastBuildings = buildingsConstructed();
+        brainLastKnownNodes = brainKnownUsefulNodes;
+        brainStalled = false;
+    } else {
+        brainStalled =
+            gameTime() - brainProgressTime > 14;
+    }
+}
+
+function brainScoreGoals() {
+    scoreDefend = brainThreatLevel * 85;
+
+    // A single worker (or a remote outpost) being harassed already gets its
+    // own response every tick no matter what brainGoal is active — see
+    // evacuateShapers()/builderCargoSafety()/positionEconomyGuards() in
+    // brainExecuteGoal(). It doesn't also need the whole army recalled off
+    // an attack that's already under way. Only a threat actually at the
+    // main base (or the base itself taking hits) is serious enough to
+    // override everything else — that's the only case that earns the full
+    // emergency bonus. Anything smaller still nudges Defend up a little via
+    // brainThreatLevel and this reduced bonus, without being able to
+    // single-handedly outscore and abort an in-progress attack.
+    if (commandCenterUnderAttack() || baseThreat > 0) {
+        scoreDefend = scoreDefend + 900;
+    } else if (emergencyActive) {
+        scoreDefend = scoreDefend + 200;
+    }
+
+    if (commandCenterUnderAttack()) {
+        scoreDefend = scoreDefend + 700;
+    }
+
+    scoreEconomy = 180 - brainEconomyHealth;
+
+    if (economicWarning) {
+        scoreEconomy = scoreEconomy + 260;
+    }
+
+    if (economicCrisis) {
+        scoreEconomy = scoreEconomy + 650;
+    }
+
+    scoreScout = 100 + brainKnowledgeNeed;
+
+    if (unitCount("Lynx") <= 0) {
+        scoreScout = scoreScout + 180;
+    }
+
+    scoreExpand = -9999;
+
+    if (brainCandidateNode != "") {
+        scoreExpand =
+            170 +
+            expansionUtility(brainCandidateNode) -
+            brainThreatLevel * 35;
+
+        if (economicWarning) {
+            scoreExpand = scoreExpand + 180;
+        }
+    }
+
+    scoreRecover =
+        recentLosses * 45 +
+        damagedArmyCount * 12;
+
+    if (armyHealthScore < 0.55) {
+        scoreRecover = scoreRecover + 350;
+    }
+
+    if (phase == 3) {
+        scoreRecover = scoreRecover + 120;
+    }
+
+    scoreAttack =
+        120 +
+        brainArmyReadiness * 3 +
+        max(0, brainEconomyHealth);
+
+    if (
+        !readyToAttack() ||
+        currentPower <= 0 ||
+        frontlineCount() < 3
+    ) {
+        scoreAttack = -9999;
+    }
+
+    if (
+        enemyBaseDistance < 120 &&
+        brainVisibleBuildings <= 0 &&
+        count(visibleEnemyUnits()) <= 0
+    ) {
+        scoreAttack = -9999;
+        scoreScout = scoreScout + 420;
+    }
+
+    // Same distinction as scoreDefend above: a threat at the base is worth
+    // seriously discouraging an attack over; a harassed worker or remote
+    // asset elsewhere on the map (which already gets its own response) isn't.
+    if (commandCenterUnderAttack() || baseThreat > 0) {
+        scoreAttack = scoreAttack - 300;
+    } else if (brainThreatLevel > 0) {
+        scoreAttack = scoreAttack - 80;
+    }
+
+    if (economicCrisis) {
+        scoreAttack = scoreAttack - 500;
+    }
+
+    scoreCleanup = -9999;
+
+    if (brainVisibleBuildings > 0) {
+        scoreCleanup =
+            240 +
+            brainArmyReadiness * 3;
+    }
+
+    if (cleanupMode) {
+        scoreCleanup = scoreCleanup + 220;
+    }
+
+    scoreTech = 160;
+
+    if (hasBuilding("researchLab")) {
+        scoreTech = scoreTech + 90;
+    }
+
+    if (safeToResearch) {
+        scoreTech = scoreTech + 100;
+    }
+
+    if (economicWarning) {
+        scoreTech = scoreTech - 220;
+    }
+
+    scoreBuild = 210 - brainArmyReadiness;
+
+    if (!hasBuilding("barracks")) {
+        scoreBuild = scoreBuild + 700;
+    }
+
+    if (!hasBuilding("factory")) {
+        scoreBuild = scoreBuild + 180;
+    }
+
+    if (mainArmyCount() < 8) {
+        scoreBuild = scoreBuild + 260;
+    }
+
+    scoreNaval = -9999;
+
+    if (waterAvailable) {
+        scoreNaval = 120 + navyCount() * 8;
+
+        if (!hasBuilding("shipyard")) {
+            scoreNaval = scoreNaval + 110;
+        }
+    }
+}
+
+function brainChooseGoal() {
+    brainBestGoal = 0;
+    brainBestScore = -99999;
+
+    brainConsider(1, scoreDefend);
+    brainConsider(2, scoreEconomy);
+    brainConsider(3, scoreExpand);
+    brainConsider(4, scoreScout);
+    brainConsider(5, scoreBuild);
+    brainConsider(6, scoreTech);
+    brainConsider(7, scoreAttack);
+    brainConsider(8, scoreRecover);
+    brainConsider(9, scoreCleanup);
+    brainConsider(10, scoreNaval);
+
+    if (
+        brainGoal == 0 ||
+        brainBestGoal != brainGoal
+    ) {
+        brainPreviousGoal = brainGoal;
+        brainGoal = brainBestGoal;
+        brainGoalStarted = gameTime();
+        brainProgressTime = gameTime();
+    }
+
+    brainGoalScore = brainBestScore;
+}
+
+function brainEnsureInfrastructure() {
+    if (!hasBuilding("barracks")) {
+        if (unitCount("Fabricator") < 3) {
+            produceFabricator();
+        } else {
+            construct("barracks");
+        }
+
+        return;
+    }
+
+    manageConstruction();
+}
+
+function brainExecuteDefend() {
+    phase = 3;
+    defendMainArmy(defenseX, defenseY);
+
+    if (commandCenterUnderAttack()) {
+        defendCommandCenter();
+    }
+
+    produceBarracksUnit();
+    produceFactoryUnit();
+}
+
+// scoutMap() alone only ever moves the dedicated Scout (or, lacking one, a
+// single idle unit it borrows itself) — with map coverage still low and
+// nothing pressing to do with a spare army unit, press one more into
+// scouting duty too, so exploration isn't bottlenecked on one unit's speed
+// or bad luck losing the only Scout. Safe to call every tick: scoutUnit()
+// no-ops on a unit already out scouting, and only ever touches an idle one.
+function reinforceScouting() {
+    if (enemyBaseFound() || mapExploredRatio() >= 0.6) {
+        return;
+    }
+
+    for (id in mainFighters()) {
+        if (unitIsIdle(id)) {
+            // Head toward wherever attackers have actually been coming
+            // from (see noteEnemyDirection()) rather than wandering
+            // randomly, once there's at least one real observation to go
+            // on — normal scout/combat behavior takes over once it's out
+            // there and sees something.
+            if (inferredEnemyObservations > 0) {
+                moveUnitTo(id, inferredEnemyBaseX(), inferredEnemyBaseY());
+            } else {
+                scoutUnit(id);
+            }
+            return;
+        }
+    }
+}
+
+function brainExecuteEconomy() {
+    if (
+        phase == 2 &&
+        brainVisibleBuildings <= 0 &&
+        count(visibleEnemyUnits()) <= 0
+    ) {
+        phase = 1;
+        decisionMode = 0;
+        objectiveStalled = false;
+        defendUnitsAt(mainFighters(), baseX(), baseY());
+    }
+
+    assignMineNetwork();
+    produceFabricator();
+    updateExpansionSavings();
+    reinforceScouting();
+
+    if (unitCount("Lynx") < 1) {
+        produceBarracksUnit();
+    }
+
+    if (brainCandidateNode != "") {
+        manageSafeExpansion();
+        guardPendingExpansion();
+    } else {
+        scoutMap();
+    }
+}
+
+function brainExecuteExpand() {
+    expansionSavingsActive = true;
+    expansionSavingsNode = brainCandidateNode;
+    manageSafeExpansion();
+    guardPendingExpansion();
+    positionEconomyGuards();
+}
+
+function brainExecuteScout() {
+    if (unitCount("Lynx") < 2) {
+        produceBarracksUnit();
+    }
+
+    scoutMap();
+    reinforceScouting();
+    positionEconomyGuards();
+}
+
+function brainExecuteBuild() {
+    brainEnsureInfrastructure();
+    manageResearch();
+    produceFabricator();
+    produceBarracksUnit();
+    produceFactoryUnit();
+    produceNavy();
+}
+
+function brainExecuteTech() {
+    brainEnsureInfrastructure();
+    manageResearch();
+
+    if (mainArmyCount() < 10) {
+        produceBarracksUnit();
+        produceFactoryUnit();
+    }
+}
+
+function brainExecuteAttack() {
+    produceBarracksUnit();
+    produceFactoryUnit();
+
+    if (
+        currentPower <= 0 ||
+        mainArmyCount() < 6 ||
+        frontlineCount() < 2
+    ) {
+        beginRecovery();
+        return;
+    }
+
+    if (
+        enemyBaseDistance < 120 &&
+        count(visibleEnemyBuildings()) <= 0 &&
+        count(visibleEnemyUnits()) <= 0
+    ) {
+        phase = 1;
+        scoutMap();
+        return;
+    }
+
+    if (phase != 2 && phase != 4) {
+        if (readyToAttack()) {
+            beginGrouping();
+        } else {
+            brainExecuteBuild();
+            return;
+        }
+    }
+
+    if (phase == 4) {
+        commandGrouping();
+
+        if (groupingReady()) {
+            launchAttack();
+        }
+    }
+
+    if (phase == 2) {
+        if (
+            attackCollapsed() ||
+            (objectiveStalled && gameTime() - objectiveProgressTime > 14)
+        ) {
+            if (!battleOutcomeRecorded) {
+                recordBattleOutcome(false);
+                battleOutcomeRecorded = true;
+            }
+            beginRecovery();
+        } else {
+            executeObjectiveDecision();
+        }
+    }
+}
+
+function brainExecuteRecover() {
+    phase = 3;
+    regroupMainArmy();
+    produceBarracksUnit();
+    produceFactoryUnit();
+
+    if (
+        armyHealthScore >= 0.72 &&
+        recentLosses < 3
+    ) {
+        phase = 1;
+    }
+}
+
+function brainExecuteCleanup() {
+    cleanupMode = true;
+    runBuildingCleanup();
+}
+
+function brainExecuteNaval() {
+    brainEnsureInfrastructure();
+    manageResearch();
+    produceNavy();
+    commandNavy();
+}
+
+function brainExecuteGoal() {
+    assignMineNetwork();
+    builderCargoSafety();
+    evacuateFabricators();
+    protectLynxs();
+
+    if (brainGoal == 1) {
+        brainExecuteDefend();
+    }
+
+    if (brainGoal == 2) {
+        brainExecuteEconomy();
+    }
+
+    if (brainGoal == 3) {
+        brainExecuteExpand();
+    }
+
+    if (brainGoal == 4) {
+        brainExecuteScout();
+    }
+
+    if (brainGoal == 5) {
+        brainExecuteBuild();
+    }
+
+    if (brainGoal == 6) {
+        brainExecuteTech();
+    }
+
+    if (brainGoal == 7) {
+        brainExecuteAttack();
+    }
+
+    if (brainGoal == 8) {
+        brainExecuteRecover();
+    }
+
+    if (brainGoal == 9) {
+        brainExecuteCleanup();
+    }
+
+    if (brainGoal == 10) {
+        brainExecuteNaval();
+    }
+
+    runCombatMicro();
+    manageCombatSkills();
+    rotateDamagedUnits();
+}
+
+function brainThink() {
+    brainObserve();
+    brainScoreGoals();
+    brainChooseGoal();
+    brainExecuteGoal();
+}
+
+// Deterministic opening guard. The utility brain takes over immediately,
+// but it must never reserve itself into a deadlock before the first producer
+// and mining cycle exist.
+function secureOpening() {
+    if (gameTime() > 90) {
+        return;
+    }
+
+    scanMineNetwork();
+    assignMineNetwork();
+
+    if (!hasBuilding("barracks") && resources() >= 150) {
+        construct("barracks");
+    }
+
+    if (
+        unitCount("builder") < 4 &&
+        resources() >= 50 &&
+        queueOpen("commandCenter", 2)
+    ) {
+        train("builder");
+    }
+
+    if (gameTime() >= 2) {
+        gatherResources();
+    }
+
+    if (
+        hasBuilding("barracks") &&
+        unitCount("scout") < 1 &&
+        resources() >= 60
+    ) {
+        train("scout");
+    }
+}
+
+secureOpening();
+brainThink();
+
+// Top-level recovery remains effective when a running match has retained
+// older function definitions. It prevents a depleted economy from freezing
+// forever after every previously covered crystal node disappears.
+if (
+    economicCrisis &&
+    productiveCoveredNodes <= 0 &&
+    count(knownResourceNodes()) > 0 &&
+    gameTime() >= hotRecoveryExpansionTick &&
+    pendingExpansionNode == "" &&
+    resources() >= 320 &&
+    !emergencyActive
+) {
+    hotRecoveryNode = "";
+    hotRecoveryScore = 999999;
+
+    for (node in knownResourceNodes()) {
+        if (
+            nodeExists(node) &&
+            !nodeCovered(node) &&
+            nodeRemaining(node) > 250 &&
+            count(enemyUnitsNear(nodeX(node), nodeY(node), 220)) <= 0 &&
+            count(enemyBuildingsNear(nodeX(node), nodeY(node), 270)) <= 0 &&
+            !buildingNear("outpost", nodeX(node), nodeY(node), 320)
+        ) {
+            hotRecoveryCandidateScore =
+                distanceBetween(baseX(), baseY(), nodeX(node), nodeY(node)) -
+                min(1800, nodeRemaining(node)) / 3;
+
+            if (hotRecoveryCandidateScore < hotRecoveryScore) {
+                hotRecoveryScore = hotRecoveryCandidateScore;
+                hotRecoveryNode = node;
+            }
+        }
+    }
+
+    if (hotRecoveryNode != "") {
+        phase = 1;
+        decisionMode = 0;
+        objectiveStalled = false;
+        brainCandidateNode = hotRecoveryNode;
+        expansionCandidate = hotRecoveryNode;
+        expansionCandidateX = nodeX(hotRecoveryNode);
+        expansionCandidateY = nodeY(hotRecoveryNode);
+        expansionDanger = 0;
+        defendUnitsAt(mainFighters(), expansionCandidateX, expansionCandidateY);
+
+        if (expandToNode(hotRecoveryNode)) {
+            registerPendingExpansion(hotRecoveryNode);
+            expansionSavingsActive = false;
+            expansionSavingsNode = "";
+            hotRecoveryExpansionTick = gameTime() + 25;
+        } else {
+            hotRecoveryExpansionTick = gameTime() + 3;
+        }
+    } else {
+        scoutMap();
+        hotRecoveryExpansionTick = gameTime() + 6;
+    }
+}

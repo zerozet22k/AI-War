@@ -1,0 +1,141 @@
+.hud-wrap {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 30;
+  background: rgba(13, 17, 24, 0.5);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(42, 52, 70, 0.55);
+}
+
+.hud {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 6px 14px;
+  color: #e5e7eb;
+  font-size: 12px;
+}
+
+.hud__side {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.hud__side--enemy {
+  justify-content: flex-end;
+}
+
+.hud__owner-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.hud__owner-dot--player {
+  background: #3b82f6;
+}
+
+.hud__owner-dot--enemy {
+  background: #ef4444;
+}
+
+.hud__resources {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.hud__label {
+  color: #64748b;
+  font-size: 10px;
+}
+
+.hud__divider {
+  width: 1px;
+  height: 12px;
+  background: #2a3446;
+}
+
+.hud__center {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+}
+
+.hud__match-time {
+  font-size: 11px;
+  color: #94a3b8;
+  font-variant-numeric: tabular-nums;
+}
+
+.hud-toolbar__group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.hud-toolbar__btn {
+  background: rgba(31, 41, 55, 0.7);
+  border: 1px solid #2a3446;
+  color: #cbd5e1;
+  border-radius: 5px;
+  padding: 3px 9px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.hud-toolbar__btn:hover:not(:disabled) {
+  color: #fff;
+  border-color: #3b4759;
+}
+
+.hud-toolbar__btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.hud-toolbar__btn--icon {
+  width: 24px;
+  padding: 3px 0;
+  text-align: center;
+}
+
+.hud-toolbar__speeds {
+  display: flex;
+  border: 1px solid #2a3446;
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.hud-toolbar__speed {
+  background: rgba(31, 41, 55, 0.7);
+  border: none;
+  border-right: 1px solid #2a3446;
+  color: #94a3b8;
+  padding: 3px 8px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.hud-toolbar__speed:last-child {
+  border-right: none;
+}
+
+.hud-toolbar__speed:hover:not(:disabled) {
+  color: #e5e7eb;
+}
+
+.hud-toolbar__speed--active {
+  background: var(--race-dark, #2563eb);
+  color: #fff;
+}
+
+.hud-toolbar__speed:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}

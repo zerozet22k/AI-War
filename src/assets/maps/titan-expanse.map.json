@@ -1,0 +1,40 @@
+{
+  "id": "titan-expanse",
+  "name": "Titan Expanse",
+  "description": "A colossal four-front battlefield with coastal bays, a central inland sea, and distant contested crystal fields.",
+  "tileset": "frontier",
+  "columns": 160,
+  "rows": 160,
+  "worldWidth": 10240,
+  "worldHeight": 10240,
+  "baseTerrain": "land",
+  "landTiles": ["verdant-a", "verdant-b", "earth-a", "slate-a"],
+  "waterTiles": ["water-deep", "water-coast"],
+  "features": [
+    { "terrain": "water", "shape": "rect", "x": 0, "y": 0, "width": 160, "height": 6 },
+    { "terrain": "water", "shape": "rect", "x": 0, "y": 154, "width": 160, "height": 6 },
+    { "terrain": "water", "shape": "rect", "x": 0, "y": 0, "width": 6, "height": 160 },
+    { "terrain": "water", "shape": "rect", "x": 154, "y": 0, "width": 6, "height": 160 },
+    { "terrain": "water", "shape": "ellipse", "x": 80, "y": 80, "radiusX": 27, "radiusY": 23 },
+    { "terrain": "water", "shape": "ellipse", "x": 80, "y": 7, "radiusX": 19, "radiusY": 12 },
+    { "terrain": "water", "shape": "ellipse", "x": 80, "y": 153, "radiusX": 19, "radiusY": 12 },
+    { "terrain": "water", "shape": "ellipse", "x": 7, "y": 80, "radiusX": 12, "radiusY": 19 },
+    { "terrain": "water", "shape": "ellipse", "x": 153, "y": 80, "radiusX": 12, "radiusY": 19 }
+  ],
+  "bases": {
+    "player": [16, 16],
+    "enemy": [143, 16],
+    "player3": [16, 143],
+    "player4": [143, 143]
+  },
+  "resources": [
+    [19, 14], [14, 19], [22, 22],
+    [140, 14], [145, 19], [137, 22],
+    [14, 140], [19, 145], [22, 137],
+    [145, 140], [140, 145], [137, 137],
+    [40, 30], [30, 40], [120, 30], [130, 40],
+    [30, 120], [40, 130], [130, 120], [120, 130],
+    [80, 53], [80, 107], [52, 80], [108, 80],
+    [50, 50], [110, 50], [50, 110], [110, 110]
+  ]
+}

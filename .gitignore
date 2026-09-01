@@ -1,0 +1,15 @@
+node_modules
+.tools/
+dist
+.DS_Store
+Thumbs.db
+*.local
+.env
+.env.*
+!.env.example
+*.tsbuildinfo
+/vite.config.js
+/vite.config.d.ts
+__pycache__/
+*.pyc
+*.pyo

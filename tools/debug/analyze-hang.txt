@@ -1,0 +1,6 @@
+.symfix
+.sympath+ C:\AIWARSymbols
+.reload /f
+!runaway
+~* kb
+q

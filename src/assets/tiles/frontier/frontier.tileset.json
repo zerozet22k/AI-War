@@ -1,0 +1,8 @@
+{
+  "id": "frontier",
+  "name": "Frontier Wildlands",
+  "tileSize": 64,
+  "land": ["verdant-a", "verdant-b", "earth-a", "slate-a"],
+  "water": ["water-deep", "water-coast"],
+  "shore": ["shore-v2-0", "shore-v2-1", "shore-v2-2", "shore-v2-3", "shore-v2-4", "shore-v2-5", "shore-v2-6", "shore-v2-7", "shore-v2-8", "shore-v2-9", "shore-v2-10", "shore-v2-11", "shore-v2-12", "shore-v2-13", "shore-v2-14", "shore-v2-15"]
+}

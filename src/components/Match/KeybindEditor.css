@@ -1,0 +1,177 @@
+.keybind-editor {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 28px 24px 60px;
+  color: #e5e7eb;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.keybind-editor header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.keybind-editor header h1 {
+  margin: 0 0 6px;
+  font-size: 22px;
+}
+
+.keybind-editor__subtitle {
+  margin: 0;
+  max-width: 640px;
+  color: #94a3b8;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.keybind-editor__subtitle code {
+  color: #cbd5e1;
+}
+
+.keybind-editor__camera {
+  background: #10151d;
+  border: 1px solid #2a3446;
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin-bottom: 18px;
+}
+
+.keybind-editor__camera-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.keybind-editor__camera-header h2 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.keybind-editor__camera-row {
+  display: grid;
+  grid-template-columns: 90px 1fr 48px;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.keybind-editor__camera-row label {
+  font-size: 12px;
+  color: #cbd5e1;
+}
+
+.keybind-editor__camera-value {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: #94a3b8;
+  text-align: right;
+}
+
+.keybind-editor__camera .keybind-editor__hint {
+  margin: 0 0 12px;
+  color: #64748b;
+  font-size: 11px;
+}
+
+.keybind-editor__camera .keybind-editor__hint:last-child {
+  margin-bottom: 0;
+}
+
+.keybind-editor__section-title {
+  margin: 0 0 10px;
+  font-size: 14px;
+}
+
+.keybind-editor__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.keybind-editor__status {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.keybind-editor__status--ok {
+  color: #4ade80;
+}
+
+.keybind-editor__status--error {
+  color: #f87171;
+}
+
+.keybind-editor__body {
+  display: flex;
+  gap: 16px;
+  flex: 1;
+  min-height: 420px;
+}
+
+.keybind-editor__reference {
+  width: 280px;
+  flex-shrink: 0;
+  background: #10151d;
+  border: 1px solid #2a3446;
+  border-radius: 8px;
+  padding: 14px;
+  overflow-y: auto;
+  font-size: 12px;
+}
+
+.keybind-editor__reference-title {
+  font-weight: 700;
+  font-size: 13px;
+  margin-bottom: 10px;
+}
+
+.keybind-editor__reference-section {
+  margin-bottom: 16px;
+}
+
+.keybind-editor__reference-section p {
+  margin: 0;
+  color: #94a3b8;
+  line-height: 1.5;
+}
+
+.keybind-editor__reference-label {
+  color: #60a5fa;
+  font-weight: 700;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 6px;
+}
+
+.keybind-editor__action-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.keybind-editor__action-row code {
+  color: #f5c518;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
+}
+
+.keybind-editor__action-row span {
+  color: #94a3b8;
+  font-size: 11px;
+  text-align: right;
+}
+
+.keybind-editor__empty {
+  color: #64748b;
+  font-style: italic;
+}

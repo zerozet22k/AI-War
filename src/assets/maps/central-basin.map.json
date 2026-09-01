@@ -1,0 +1,21 @@
+{
+  "id": "central-basin",
+  "name": "Central Basin",
+  "description": "Armies split around a large navigable central lake while artillery contests the narrow banks.",
+  "tileset": "frontier",
+  "columns": 68,
+  "rows": 68,
+  "worldWidth": 4352,
+  "worldHeight": 4352,
+  "baseTerrain": "land",
+  "landTiles": ["verdant-a","verdant-b","earth-a","slate-a"],
+  "waterTiles": ["water-deep","water-coast"],
+  "features": [
+    {"terrain":"water","shape":"ellipse","x":34,"y":34,"radiusX":11,"radiusY":13},
+    {"terrain":"water","shape":"ellipse","x":34,"y":13,"radiusX":5,"radiusY":6},
+    {"terrain":"water","shape":"ellipse","x":34,"y":55,"radiusX":5,"radiusY":6},
+    {"terrain":"water","shape":"rect","x":32,"y":13,"width":5,"height":44}
+  ],
+  "bases": { "player": [5, 8], "enemy": [62, 8], "player3": [5, 58], "player4": [62, 58] },
+  "resources": [[7, 6], [7, 11], [9, 6], [9, 10], [3, 4], [3, 12], [60, 6], [60, 11], [58, 6], [58, 10], [64, 4], [64, 12], [7, 55], [7, 62], [9, 56], [9, 60], [3, 54], [3, 62], [60, 55], [60, 62], [58, 56], [58, 60], [64, 54], [64, 62], [23, 18], [23, 50], [44, 18], [44, 50], [22, 34], [46, 34], [17, 8]]
+}

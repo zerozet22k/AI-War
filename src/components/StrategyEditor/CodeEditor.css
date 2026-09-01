@@ -1,0 +1,15 @@
+.code-editor {
+  flex: 1;
+  min-height: 360px;
+  border: 1px solid #2a3446;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.code-editor .cm-editor {
+  height: 100%;
+}
+
+.code-editor .cm-editor.cm-focused {
+  outline: none;
+}

@@ -1,0 +1,99 @@
+.race-picker {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  text-align: left;
+}
+
+.race-picker legend {
+  color: #cbd5e1;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.race-picker__options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.race-picker__card {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 7px;
+  border: 1px solid #2a3446;
+  border-radius: 9px;
+  background: #111925;
+  color: #e5e7eb;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 120ms ease, background 120ms ease, transform 120ms ease;
+}
+
+.race-picker__card:hover:not(:disabled) {
+  border-color: #52627a;
+  transform: translateY(-1px);
+}
+
+.race-picker__card--selected {
+  border-color: #60a5fa;
+  background: #15243a;
+  box-shadow: inset 0 0 0 1px rgb(96 165 250 / 25%);
+}
+
+.race-picker__portrait {
+  width: 58px;
+  aspect-ratio: 1;
+  border-radius: 6px;
+  border: 1px solid rgb(255 255 255 / 8%);
+  background: radial-gradient(circle at 50% 45%, #25344a 0%, #101722 66%, #090d13 100%);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+
+.race-picker__portrait img {
+  width: 90%;
+  height: 90%;
+  object-fit: contain;
+  filter: drop-shadow(0 4px 5px rgb(0 0 0 / 60%));
+  user-select: none;
+}
+
+.race-picker__copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.race-picker__copy strong {
+  font-size: 12px;
+}
+
+.race-picker__copy small {
+  color: #8190a5;
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.race-picker--compact .race-picker__card {
+  grid-template-columns: 44px minmax(0, 1fr);
+}
+
+.race-picker--compact .race-picker__portrait {
+  width: 44px;
+}
+
+@media (max-width: 680px) {
+  .race-picker__options {
+    grid-template-columns: 1fr;
+  }
+}

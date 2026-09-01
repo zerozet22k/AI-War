@@ -1,0 +1,21 @@
+{
+  "id": "broken-coast",
+  "name": "Broken Coast",
+  "description": "A large land war beneath a reusable naval coast, with three bays creating natural defensive flanks.",
+  "tileset": "frontier",
+  "columns": 80,
+  "rows": 80,
+  "worldWidth": 5120,
+  "worldHeight": 5120,
+  "baseTerrain": "land",
+  "landTiles": ["verdant-a","verdant-b","earth-a","slate-a"],
+  "waterTiles": ["water-deep","water-coast"],
+  "features": [
+    {"terrain":"water","shape":"rect","x":0,"y":0,"width":80,"height":15},
+    {"terrain":"water","shape":"ellipse","x":18,"y":17,"radiusX":8,"radiusY":12},
+    {"terrain":"water","shape":"ellipse","x":40,"y":18,"radiusX":7,"radiusY":13},
+    {"terrain":"water","shape":"ellipse","x":62,"y":17,"radiusX":8,"radiusY":12}
+  ],
+  "bases": { "player": [6, 38], "enemy": [73, 38], "player3": [6, 72], "player4": [73, 72] },
+  "resources": [[8, 35], [8, 42], [10, 36], [10, 40], [4, 34], [4, 42], [71, 35], [71, 42], [69, 36], [69, 40], [75, 34], [75, 42], [8, 68], [8, 75], [10, 70], [10, 74], [4, 68], [4, 76], [71, 68], [71, 75], [69, 70], [69, 74], [75, 68], [75, 76], [25, 38], [25, 65], [54, 38], [54, 65], [35, 47], [44, 47], [35, 67]]
+}

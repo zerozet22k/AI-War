@@ -1,0 +1,30 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "noFallthroughCasesInSwitch": true,
+    "types": ["node"]
+  },
+  "include": [
+    "server",
+    "src/game/*.ts",
+    "src/game/simulation/**/*.ts",
+    "src/game/ai/**/*.ts",
+    "src/game/intervention/**/*.ts",
+    "src/types/**/*.ts",
+    "src/net/protocol.ts",
+    "src/utils/**/*.ts"
+  ],
+  "exclude": ["**/*.test.ts"]
+}
