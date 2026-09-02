@@ -47,22 +47,19 @@ function terrainTileUrl(tileset: string, tileId: string): string {
   return url;
 }
 
-const OWNER_COLOR: Record<PlayerId, number> = {
-  player: 0x3b82f6,
-  enemy: 0xef4444,
-  player3: 0x22c55e,
-  player4: 0xf59e0b,
-};
 // A visible team-color cast on every unit/building without crushing the
 // faction artwork the way a fully-saturated tint would (Phaser tints
 // multiply per channel, so a strong tint clips channels the source art
-// doesn't have much of) — roughly a 45/55 blend of OWNER_COLOR and white.
-const OWNER_TINT: Record<PlayerId, number> = {
-  player: 0xa7c7fb,
-  enemy: 0xf8abab,
-  player3: 0x9ce5b7,
-  player4: 0xfbd391,
-};
+// doesn't have much of) — roughly a 45/55 blend of the owner's chosen
+// color and white, computed from whatever color the lobby assigned
+// (Simulation's DEFAULT_OWNER_COLOR when nothing was explicitly chosen).
+function ownerTintFromColor(color: number): number {
+  const r = (color >> 16) & 0xff;
+  const g = (color >> 8) & 0xff;
+  const b = color & 0xff;
+  const blend = (channel: number) => Math.round(channel * 0.45 + 255 * 0.55);
+  return (blend(r) << 16) | (blend(g) << 8) | blend(b);
+}
 // Fixed-timestep simulation loop: gameplay always advances in constant FIXED_DT
 // increments regardless of the browser's actual render frame rate. Real
 // elapsed frame time (scaled by the speed control) accumulates and is drained
@@ -411,14 +408,14 @@ export class MainScene extends Phaser.Scene {
 
     for (const u of this.controller.sim.state.units) {
       if (!this.isVisibleToViewer(u)) continue;
-      g.fillStyle(OWNER_COLOR[u.owner], 1);
+      g.fillStyle(this.controller.sim.state.players[u.owner].color, 1);
       g.fillCircle(u.position.x, u.position.y, unitRadius);
     }
     for (const b of this.controller.sim.state.buildings) {
       const currentlyVisible = this.isVisibleToViewer(b);
       const remembered = !currentlyVisible && this.seenEnemyBuildingIds.has(b.id);
       if (!currentlyVisible && !remembered) continue;
-      g.fillStyle(OWNER_COLOR[b.owner], remembered ? 0.5 : 1);
+      g.fillStyle(this.controller.sim.state.players[b.owner].color, remembered ? 0.5 : 1);
       g.fillRect(b.position.x - buildingRadius, b.position.y - buildingRadius, buildingRadius * 2, buildingRadius * 2);
     }
   }
@@ -706,7 +703,7 @@ export class MainScene extends Phaser.Scene {
         const projectileRace = this.controller.sim.state.players[projectile.owner].race;
         const color = this.projectileColor(projectile.kind, projectileRace);
         visual = this.add.graphics().setDepth(30);
-        this.drawProjectile(visual, projectile.kind, color, OWNER_COLOR[projectile.owner]);
+        this.drawProjectile(visual, projectile.kind, color, this.controller.sim.state.players[projectile.owner].color);
         visual.setData('kind', projectile.kind);
         this.projectileVisuals.set(projectile.id, visual);
         const target = this.controller.sim.state.units.find((unit) => unit.id === projectile.targetId)
@@ -1476,7 +1473,7 @@ export class MainScene extends Phaser.Scene {
           ? 'shipSinking'
           : 'explosionSmall';
 
-    const ownerTint = OWNER_TINT[entity.owner];
+    const ownerTint = ownerTintFromColor(this.controller.sim.state.players[entity.owner].color);
 
     const displaySize = entityDisplaySize(entity);
     const renderSize = entity.kind === 'building' ? entityRenderSize(entity) : displaySize;
@@ -1731,12 +1728,23 @@ export class MainScene extends Phaser.Scene {
       if (skill.cooldownRemaining <= previousCooldown + 0.2) continue;
       const definition = RACES[unit.race].units[unit.raceUnitId]?.skills?.find((candidate) => candidate.id === skill.id);
       if (!definition) continue;
+      const healCue = unit.race === 'nullforge' ? 'repair' : 'heal';
+      // The 6 race-exclusive effects reuse whichever existing cue is closest
+      // in feel rather than needing their own synthesized sound (see
+      // GameAudio.ts's per-cue case statement) — a real new sound is a
+      // follow-up, not required for the ability itself to work.
       const abilityCue: Record<typeof definition.effect, GameSoundCue> = {
-        repairPulse: unit.race === 'nullforge' ? 'repair' : 'heal',
+        repairPulse: healCue,
         speedBoost: 'abilitySpeed',
         weaponBoost: 'abilityWeapon',
         fortify: 'abilityFortify',
         slowPulse: 'abilitySlow',
+        shieldBarrier: 'abilityFortify',
+        stunSlam: 'abilitySlow',
+        phaseCloak: 'abilitySpeed',
+        lifeDrain: healCue,
+        overclockSurge: 'abilityWeapon',
+        chainOverload: 'abilityWeapon',
       };
       gameAudio.play(abilityCue[definition.effect], { ...options, gain: 0.82 });
     }
@@ -1823,14 +1831,19 @@ export class MainScene extends Phaser.Scene {
       activityLog: this.controller.activityLog,
       matchDuration: sim.getGameTime(),
       completedResearch: playerValues((owner) => sim.state.players[owner].completedResearch),
+      players: playerValues((owner) => ({
+        name: sim.state.players[owner].name,
+        color: sim.state.players[owner].color,
+        team: sim.state.players[owner].team,
+      })),
     };
     const store = useAppStore.getState();
     store.setHud(hud);
 
     if (sim.state.matchResult && this.announcedMatchResult === null) {
-      const winner = sim.state.matchResult.winner;
-      this.announcedMatchResult = winner ?? 'draw';
-      gameAudio.play(winner == null ? 'draw' : winner === this.viewSide ? 'victory' : 'defeat');
+      const { winners } = sim.state.matchResult;
+      this.announcedMatchResult = winners[0] ?? 'draw';
+      gameAudio.play(winners.length === 0 ? 'draw' : winners.includes(this.viewSide) ? 'victory' : 'defeat');
     }
 
     if (store.selectedEntityIds.length > 0) {

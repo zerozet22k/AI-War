@@ -2,6 +2,7 @@
   "id": "twin-seas",
   "name": "Twin Seas",
   "description": "A wide southern battlefield below a contested sea lane and two connected inland basins.",
+  "maxPlayers": 4,
   "tileset": "frontier",
   "columns": 75,
   "rows": 75,
@@ -13,7 +14,7 @@
   "features": [
     {"terrain":"water","shape":"rect","x":0,"y":17,"width":75,"height":9},
     {"terrain":"water","shape":"ellipse","x":26,"y":29,"radiusX":6,"radiusY":9},
-    {"terrain":"water","shape":"ellipse","x":49,"y":29,"radiusX":6,"radiusY":9}
+    {"terrain":"water","shape":"ellipse","x":48,"y":29,"radiusX":6,"radiusY":9}
   ],
   "bases": { "player": [4, 38], "enemy": [70, 38], "player3": [18, 66], "player4": [56, 66] },
   "resources": [[6, 34], [6, 41], [8, 36], [8, 40], [2, 34], [2, 42], [68, 34], [68, 41], [66, 36], [66, 40], [72, 34], [72, 42], [16, 63], [20, 63], [22, 64], [22, 68], [16, 62], [16, 70], [54, 63], [58, 63], [52, 64], [52, 68], [58, 62], [58, 70], [37, 29], [37, 46], [31, 38], [43, 38], [37, 5], [37, 68], [18, 5]]

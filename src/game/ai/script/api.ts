@@ -16,7 +16,7 @@ import type { Simulation } from '../../simulation/Simulation';
 import { distance } from '../../../utils/math';
 import { ACTION_LOG_LABEL } from '../ruleMeta';
 import type { HostFn, Value } from './interpreter';
-import { RACES, resolveRaceBuildingArchetype, resolveRaceUnitArchetype } from '../../races';
+import { RACES, resolveRaceBuilding, resolveRaceBuildingArchetype, resolveRaceUnit, resolveRaceUnitArchetype } from '../../races';
 import { TILE_SIZE } from '../../constants';
 import { loadMatchHistory, summarizeMatchHistory } from '../matchMemory';
 
@@ -248,6 +248,23 @@ export function buildScriptApi(opts: ScriptApiOptions): Record<string, HostFn> {
       const wanted = requireBuildingType(type, race);
       return ownBuildings().filter((building) => building.type === wanted).length;
     },
+    // Real resource costs — same type strings train()/construct()/research()
+    // accept — for budgeting instead of hard-coding guessed numbers. Costs
+    // are race-specific now, so these resolve the full race-unit/building
+    // entry rather than just its (race-agnostic) archetype.
+    unitCost: (type: Value) => {
+      const s = requireString(type, 'unit type');
+      const entry = resolveRaceUnit(race, s);
+      if (!entry) throw new Error(`Unknown ${RACES[race].name} unit "${s}" — use a roster id, name, class, or archetype.`);
+      return entry.definition.cost;
+    },
+    buildingCost: (type: Value) => {
+      const s = requireString(type, 'building type');
+      const entry = resolveRaceBuilding(race, s);
+      if (!entry) throw new Error(`Unknown ${RACES[race].name} building "${s}" — use a roster id, name, class, or archetype.`);
+      return entry.definition.cost;
+    },
+    researchCost: (type: Value) => RACES[race].researchCosts[requireResearchType(type)],
     resourcesGathered: () => sim.state.stats[owner].resourcesGathered,
     unitsCreated: () => sim.state.stats[owner].unitsCreated,
     unitsLost: () => sim.state.stats[owner].unitsLost,
@@ -286,6 +303,17 @@ export function buildScriptApi(opts: ScriptApiOptions): Record<string, HostFn> {
     // for deciding whether to keep investing in scouting, e.g.
     // `if (mapExploredRatio() < 0.5) { ... }`.
     mapExploredRatio: () => sim.exploredMapRatio(owner),
+    // 0..1 — how much of the whole map's terrain is water. A heavily-naval
+    // map (a big lake, a coastal map) reads high here; a mostly-dry map
+    // reads near 0. Doesn't by itself mean you're cut off from anyone —
+    // see isIsolatedByWater() for that.
+    mapWaterRatio: () => sim.mapWaterRatio(),
+    // True if there's no land-only path from your base to any other active
+    // player's base — an "island" map for you, where reaching anyone at
+    // all requires naval or air units, not just ground forces. False on a
+    // map that merely has some water on it (a lake, a coast) but still
+    // lets a land army walk the whole way around.
+    isIsolatedByWater: () => sim.isIsolatedByWater(owner),
 
     // --- queries: positions (numbers — no vector/object type, so x and y
     // are separate calls; combine with ordinary arithmetic, e.g.
@@ -453,6 +481,14 @@ export function buildScriptApi(opts: ScriptApiOptions): Record<string, HostFn> {
     buildingMaxHp: (id: Value) => findBuildingById(requireString(id, 'building id'))?.maxHp ?? 0,
     buildingProgress: (id: Value) => findBuildingById(requireString(id, 'building id'))?.constructionProgress ?? 0,
     buildingUnderConstruction: (id: Value) => findBuildingById(requireString(id, 'building id'))?.underConstruction ?? false,
+    // True once a builder is actually en route/on site (see constructAt()/
+    // resumeConstruction()) — false for an unfinished building whose builder
+    // died mid-construction, which otherwise sits stalled forever. Pair with
+    // buildingUnderConstruction(id) to find stranded foundations to rescue.
+    buildingHasBuilder: (id: Value) => {
+      const buildingId = requireString(id, 'building id');
+      return findBuildingById(buildingId) !== undefined && sim.isBuildingStaffed(buildingId);
+    },
     buildingHealthRatio: (id: Value) => {
       const building = findBuildingById(requireString(id, 'building id'));
       return building ? building.hp / Math.max(1, building.maxHp) : 0;
@@ -460,6 +496,12 @@ export function buildScriptApi(opts: ScriptApiOptions): Record<string, HostFn> {
     buildingQueueLength: (id: Value) => findBuildingById(requireString(id, 'building id'))?.productionQueue.length ?? 0,
     buildingProductionProgress: (id: Value) => findBuildingById(requireString(id, 'building id'))?.productionQueue[0]?.progress ?? 0,
     buildingResearchProgress: (id: Value) => findBuildingById(requireString(id, 'building id'))?.researchQueue[0]?.progress ?? 0,
+    buildingAttack: (id: Value) => findBuildingById(requireString(id, 'building id'))?.attack ?? 0,
+    buildingAttackRange: (id: Value) => findBuildingById(requireString(id, 'building id'))?.attackRange ?? 0,
+    // Race-unit ids in queue order (index 0 = currently in progress) — same
+    // identity strings train()/trainRaceUnit() accept, so a script can see
+    // exactly what's coming before it finishes.
+    productionQueue: (id: Value) => findBuildingById(requireString(id, 'building id'))?.productionQueue.map((order) => order.raceUnitId) ?? [],
 
     // --- per-unit info: read-only, works for any unit id you've legitimately
     // learned from a query above (including a scouted enemy's) ---
@@ -483,6 +525,9 @@ export function buildScriptApi(opts: ScriptApiOptions): Record<string, HostFn> {
       return unit ? unit.hp / Math.max(1, unit.maxHp) : 0;
     },
     unitOrder: (id: Value) => findUnitById(requireString(id, 'unit id'))?.order.type ?? '',
+    // The enemy id this unit is currently engaging in combat (auto-acquired
+    // target — see stepCombat), or "" if it isn't fighting anyone right now.
+    unitTarget: (id: Value) => findUnitById(requireString(id, 'unit id'))?.autoTargetId ?? '',
     unitDomain: (id: Value) => findUnitById(requireString(id, 'unit id'))?.movementDomain ?? '',
     unitIsIdle: (id: Value) => findUnitById(requireString(id, 'unit id'))?.order.type === 'idle',
     unitIsGathering: (id: Value) => findUnitById(requireString(id, 'unit id'))?.order.type === 'gather',
@@ -619,6 +664,15 @@ export function buildScriptApi(opts: ScriptApiOptions): Record<string, HostFn> {
       const nodeId = requireString(id, 'node id');
       if (!sim.isResourceNodeDiscovered(owner, nodeId)) return false;
       return genericAction(`expand:${nodeId}`, () => sim.constructMiningOutpost(owner, nodeId), 'Constructing Mining Outpost');
+    },
+    // Explicit "finish this" for a building whose builder died mid-construction
+    // (check with buildingUnderConstruction(id) && !buildingHasBuilder(id)).
+    // Auto-picks a free builder the same way construct()/constructAt() do —
+    // never creates a building or spends resources, only hands the existing
+    // foundation a new builder so its progress and paid cost are untouched.
+    resumeConstruction: (id: Value) => {
+      const buildingId = requireString(id, 'building id');
+      return genericAction(`resume:${buildingId}`, () => sim.resumeConstruction(owner, buildingId), 'Resuming Construction');
     },
     defendCommandCenter: () =>
       action('defend_command_center', () => {

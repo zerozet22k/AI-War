@@ -1,4 +1,4 @@
-import type { ArmorType, BuildingType, DamageType, MovementDomain, ProjectileKind, ResearchType, UnitType, VolumeSize } from '../types/game';
+import type { ArmorType, BuildingType, DamageType, ProjectileKind, ResearchType, UnitType, VolumeSize } from '../types/game';
 
 export const MAP_WIDTH = 4800;
 export const MAP_HEIGHT = 4800;
@@ -10,32 +10,6 @@ export const VIEW_HEIGHT = 900;
 export const TILE_SIZE = 64;
 
 export const STARTING_RESOURCES = 200;
-
-export const UNIT_COSTS: Record<UnitType, number> = {
-  builder: 50,
-  soldier: 75,
-  rocketeer: 110,
-  marksman: 100,
-  scout: 60,
-  tank: 150,
-  artillery: 210,
-  aircraft: 180,
-  support: 125,
-  bomber: 240,
-  frigate: 190,
-  dreadnought: 360,
-  submarine: 250,
-};
-
-export const BUILDING_COSTS: Record<BuildingType, number> = {
-  commandCenter: 0,
-  barracks: 150,
-  factory: 250,
-  turret: 125,
-  outpost: 100,
-  shipyard: 280,
-  researchLab: 220,
-};
 
 export const UNIT_BUILD_TIME: Record<UnitType, number> = {
   builder: 6,
@@ -61,41 +35,6 @@ export const BUILDING_BUILD_TIME: Record<BuildingType, number> = {
   outpost: 14,
   shipyard: 20,
   researchLab: 17,
-};
-
-export interface UnitStats {
-  hp: number;
-  attack: number;
-  range: number;
-  cooldown: number;
-  speed: number;
-  sight: number;
-  /** relative combat value, used for "army strength" AI condition */
-  power: number;
-  /** What kind(s) of damage this unit deals — see DAMAGE_MULTIPLIER below.
-   * Almost always one entry; more than one splits the hit evenly across
-   * types (a unit that's part-piercing, part-explosive, say). */
-  damageTypes: DamageType[];
-  armorType: ArmorType;
-  movementDomain: MovementDomain;
-  targetDomains: MovementDomain[];
-  projectileKind: ProjectileKind;
-}
-
-export const UNIT_STATS: Record<UnitType, UnitStats> = {
-  builder: unitStats(40, 0, 0, 0, 60, 150, 0, ['normal'], 'light', 'ground', ['ground'], 'bullet'),
-  soldier: unitStats(85, 11, 120, 0.8, 72, 190, 1, ['piercing'], 'light', 'ground', ['ground'], 'bullet'),
-  rocketeer: unitStats(70, 24, 175, 1.55, 62, 210, 1.65, ['explosive'], 'light', 'ground', ['ground', 'air'], 'rocket'),
-  marksman: unitStats(55, 19, 235, 1.3, 66, 245, 1.4, ['piercing'], 'light', 'ground', ['ground', 'air'], 'bullet'),
-  scout: unitStats(48, 5, 105, 0.7, 135, 285, 0.55, ['piercing'], 'light', 'ground', ['ground'], 'bullet'),
-  tank: unitStats(235, 28, 165, 1.45, 48, 220, 3, ['explosive'], 'armored', 'ground', ['ground'], 'shell'),
-  artillery: unitStats(145, 44, 340, 2.8, 38, 250, 3.35, ['explosive'], 'armored', 'ground', ['ground'], 'artillery'),
-  aircraft: unitStats(115, 15, 155, 0.9, 155, 310, 2.4, ['piercing'], 'medium', 'air', ['ground', 'air'], 'bullet'),
-  support: unitStats(95, 0, 0, 0, 72, 230, 1.1, ['normal'], 'medium', 'ground', ['ground'], 'bullet'),
-  bomber: unitStats(150, 52, 190, 2.5, 130, 285, 3.8, ['explosive'], 'medium', 'air', ['ground', 'sea'], 'artillery'),
-  frigate: unitStats(210, 20, 210, 1.05, 78, 270, 3.1, ['piercing'], 'armored', 'sea', ['ground', 'air', 'sea'], 'shell'),
-  dreadnought: unitStats(480, 58, 410, 3.2, 34, 310, 6.2, ['explosive'], 'armored', 'sea', ['ground', 'sea'], 'artillery'),
-  submarine: unitStats(185, 46, 230, 2.15, 62, 240, 3.7, ['explosive'], 'medium', 'sea', ['sea'], 'torpedo'),
 };
 
 /** Cargo size class per unit type — how much room it takes up aboard a
@@ -140,42 +79,6 @@ export const TRANSPORT_CAPACITY: Partial<Record<UnitType, { tier: VolumeSize; ca
 };
 
 export const VOLUME_SIZE_ORDINAL: Record<VolumeSize, number> = { small: 0, medium: 1, large: 2 };
-
-function unitStats(
-  hp: number,
-  attack: number,
-  range: number,
-  cooldown: number,
-  speed: number,
-  sight: number,
-  power: number,
-  damageTypes: DamageType[],
-  armorType: ArmorType,
-  movementDomain: MovementDomain,
-  targetDomains: MovementDomain[],
-  projectileKind: ProjectileKind,
-): UnitStats {
-  return { hp, attack, range, cooldown, speed, sight, power, damageTypes, armorType, movementDomain, targetDomains, projectileKind };
-}
-
-export interface BuildingStats {
-  hp: number;
-  attack?: number;
-  range?: number;
-  cooldown?: number;
-  damageTypes?: DamageType[];
-  armorType: ArmorType;
-}
-
-export const BUILDING_STATS: Record<BuildingType, BuildingStats> = {
-  commandCenter: { hp: 600, armorType: 'armored' },
-  barracks: { hp: 300, armorType: 'medium' },
-  factory: { hp: 350, armorType: 'medium' },
-  turret: { hp: 200, attack: 20, range: 220, cooldown: 1.0, damageTypes: ['piercing'], armorType: 'armored' },
-  outpost: { hp: 250, armorType: 'medium' },
-  shipyard: { hp: 420, armorType: 'armored' },
-  researchLab: { hp: 280, armorType: 'medium' },
-};
 
 /** StarCraft/Warcraft-3-style attack-vs-armor matrix — how much of a hit's
  * damage actually lands depends on the pairing of the attacker's
@@ -260,16 +163,6 @@ export const UNITS_PRODUCED_BY: Record<BuildingType, UnitType[]> = {
   outpost: [],
   shipyard: ['frigate', 'dreadnought', 'submarine'],
   researchLab: [],
-};
-
-export const RESEARCH_COSTS: Record<ResearchType, number> = {
-  fieldLogistics: 180,
-  infantryTactics: 200,
-  compositeArmor: 240,
-  advancedBallistics: 240,
-  aerialEngineering: 260,
-  navalEngineering: 300,
-  supportSystems: 220,
 };
 
 export const RESEARCH_DURATION: Record<ResearchType, number> = {

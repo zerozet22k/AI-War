@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { Simulation } from './Simulation';
 import { createUnit } from './entities';
-import { BUILDING_BUILD_TIME, DAMAGE_MULTIPLIER, STARTING_RESOURCES, UNIT_BUILD_TIME, UNIT_COSTS } from '../constants';
+import { BUILDING_BUILD_TIME, DAMAGE_MULTIPLIER, STARTING_RESOURCES, UNIT_BUILD_TIME } from '../constants';
+import { RACES } from '../races';
+
+// `new Simulation()` defaults the 'player' seat to ironclad — its builder,
+// the fabricator, is what these cost assertions are checking against.
+const IRONCLAD_BUILDER_COST = RACES.ironclad.units.fabricator.cost;
 
 describe('Simulation setup', () => {
   it('gives both players a Command Center, one Builder, and starting resources', () => {
@@ -20,7 +25,7 @@ describe('training units', () => {
     const before = sim.getResources('player');
     const ok = sim.trainUnit('player', 'builder');
     expect(ok).toBe(true);
-    expect(sim.getResources('player')).toBe(before - UNIT_COSTS.builder);
+    expect(sim.getResources('player')).toBe(before - IRONCLAD_BUILDER_COST);
     expect(sim.getUnits('player', 'builder')).toHaveLength(1); // not spawned yet
 
     for (let i = 0; i < Math.ceil(UNIT_BUILD_TIME.builder / 0.25) + 2; i += 1) {
@@ -152,6 +157,63 @@ describe('constructing buildings', () => {
     sim.state.units.push(createUnit('scout', 'enemy', spot));
     expect(sim.isBuildingVisibleTo('enemy', foundation)).toBe(true);
   });
+
+  it('stalls a foundation forever once its builder dies, until resumeConstruction() sends a replacement', () => {
+    const sim = new Simulation();
+    sim.state.players.player.resources = 1000;
+    const base = sim.state.map.bases.player;
+    const spot = { x: base.x + 120, y: base.y };
+    expect(sim.constructBuilding('player', 'barracks', spot)).toBe(true);
+    const foundation = sim.getBuildings('player', 'barracks')[0];
+    const originalBuilder = sim.getUnits('player', 'builder')[0];
+
+    // Walk the original builder to the site and let real progress accrue.
+    originalBuilder.position = { ...spot };
+    for (let i = 0; i < 20; i += 1) sim.step(0.1);
+    expect(foundation.constructionProgress).toBeGreaterThan(0);
+    expect(sim.isBuildingStaffed(foundation.id)).toBe(true);
+
+    // Kill the builder mid-construction. stepBuilding() doesn't skip a unit
+    // already at hp<=0 (only removeDead() does, at the end of this same
+    // step), so one more tick of progress still lands here — snapshot
+    // "progress at death" only once that step has fully settled.
+    originalBuilder.hp = 0;
+    sim.step(0.1); // removeDead()
+    const progressBeforeDeath = foundation.constructionProgress;
+    expect(sim.getUnits('player', 'builder')).toHaveLength(0);
+    expect(sim.isBuildingStaffed(foundation.id)).toBe(false);
+
+    // With nobody left to build it, progress genuinely stalls — this is the
+    // bug: stepBuilding() never reassigns a builder on its own.
+    const spentResources = sim.getResources('player');
+    for (let i = 0; i < 20; i += 1) sim.step(0.1);
+    expect(foundation.constructionProgress).toBe(progressBeforeDeath);
+    expect(foundation.underConstruction).toBe(true);
+
+    // Train a fresh builder and use the explicit resume command.
+    sim.trainUnit('player', 'builder');
+    for (let i = 0; i < Math.ceil(UNIT_BUILD_TIME.builder / 0.25) + 2; i += 1) sim.step(0.25);
+    const replacement = sim.getUnits('player', 'builder')[0];
+    expect(replacement).toBeDefined();
+
+    const resourcesBeforeResume = sim.getResources('player');
+    expect(sim.resumeConstruction('player', foundation.id)).toBe(true);
+    expect(sim.getResources('player')).toBe(resourcesBeforeResume); // never charged again
+    expect(sim.isBuildingStaffed(foundation.id)).toBe(true);
+
+    replacement.position = { ...spot };
+    for (let i = 0; i < 20; i += 1) sim.step(0.1);
+    // Progress kept climbing from where it stalled, not from a discount/reset.
+    expect(foundation.constructionProgress).toBeGreaterThan(progressBeforeDeath);
+    expect(sim.getResources('player')).toBeLessThanOrEqual(spentResources); // no double charge anywhere in this flow
+
+    // A second resumeConstruction() call is a no-op — the building already has a builder.
+    expect(sim.resumeConstruction('player', foundation.id)).toBe(false);
+    // And once complete, there's nothing left to resume.
+    for (let i = 0; i < Math.ceil(BUILDING_BUILD_TIME.barracks / 0.1) + 5; i += 1) sim.step(0.1);
+    expect(foundation.underConstruction).toBe(false);
+    expect(sim.resumeConstruction('player', foundation.id)).toBe(false);
+  });
 });
 
 describe('gathering', () => {
@@ -170,6 +232,9 @@ describe('combat', () => {
     const sim = new Simulation();
     const enemyCC = sim.getCommandCenter('enemy')!;
     const hpBefore = enemyCC.hp;
+    // Every match starts with a builder unit next to each base — remove the
+    // enemy's so it can't intercept the attack-move order meant for the CC.
+    sim.state.units = sim.state.units.filter((u) => u.owner !== 'enemy');
 
     const tank = createUnit('tank', 'player', { x: enemyCC.position.x + 65, y: enemyCC.position.y });
     sim.state.units.push(tank);
@@ -192,6 +257,9 @@ describe('combat', () => {
   it('does not fire until a target is inside the attacker range', () => {
     const sim = new Simulation();
     const enemyCC = sim.getCommandCenter('enemy')!;
+    // Remove the enemy's starting builder — it stands close enough to the
+    // base to otherwise be a valid in-range target on its own.
+    sim.state.units = sim.state.units.filter((u) => u.owner !== 'enemy');
     const tank = createUnit('tank', 'player', { x: enemyCC.position.x, y: enemyCC.position.y });
     tank.position.x += tank.attackRange + 20;
     sim.state.units.push(tank);
@@ -205,6 +273,9 @@ describe('combat', () => {
   it('continues ticking a unit cooldown while it remains engaged', () => {
     const sim = new Simulation();
     const enemyCC = sim.getCommandCenter('enemy')!;
+    // Remove the enemy's starting builder so the soldier's attack-move
+    // engages the Command Center itself, not the builder standing nearby.
+    sim.state.units = sim.state.units.filter((u) => u.owner !== 'enemy');
     const soldier = createUnit('soldier', 'player', { x: enemyCC.position.x + 20, y: enemyCC.position.y });
     sim.state.units.push(soldier);
     sim.setUnitsOrder([soldier.id], { type: 'attackMove', position: { ...enemyCC.position } });
@@ -372,9 +443,13 @@ describe('artillery attacks', () => {
 
 describe('attack-vs-armor damage matrix', () => {
   it('piercing (soldier) shreds light armor harder than the raw attack number', () => {
+    // Aether has passive unit regen (see stepSupportUnits) — createUnit()'s
+    // race defaults independently of the Simulation's own player races (see
+    // DEFAULT_RACE_FOR_PLAYER), so pin it explicitly to a race without regen,
+    // otherwise the post-hit hp reading is a moving target.
     const sim = new Simulation();
     const soldier = createUnit('soldier', 'player', { x: 0, y: 0 });
-    const enemyScout = createUnit('scout', 'enemy', { x: 30, y: 0 }); // light armor, within soldier's range
+    const enemyScout = createUnit('scout', 'enemy', { x: 30, y: 0 }, 'ironclad'); // light armor, within soldier's range
     sim.state.units.push(soldier, enemyScout);
 
     for (let i = 0; i < 10; i += 1) sim.step(0.05);
@@ -385,9 +460,13 @@ describe('attack-vs-armor damage matrix', () => {
   });
 
   it('explosive (tank) is weaker than its raw attack number against light armor', () => {
+    // Aether has passive unit regen (see stepSupportUnits) — createUnit()'s
+    // race defaults independently of the Simulation's own player races (see
+    // DEFAULT_RACE_FOR_PLAYER), so pin it explicitly to a race without regen,
+    // otherwise the post-hit hp reading is a moving target.
     const sim = new Simulation();
     const tank = createUnit('tank', 'player', { x: 0, y: 0 });
-    const enemyScout = createUnit('scout', 'enemy', { x: 60, y: 0 }); // light armor, within the tank's range
+    const enemyScout = createUnit('scout', 'enemy', { x: 60, y: 0 }, 'ironclad'); // light armor, within the tank's range
     sim.state.units.push(tank, enemyScout);
 
     for (let i = 0; i < 10; i += 1) sim.step(0.05);

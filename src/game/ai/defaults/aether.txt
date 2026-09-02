@@ -47,6 +47,8 @@ let economyGuardY = 0;
 let nextMineScan = 0;
 let waterChecked = false;
 let waterAvailable = false;
+let isolationChecked = false;
+let isIsolated = false;
 
 let baseThreat = 0;
 let baseThreatX = 0;
@@ -2354,94 +2356,24 @@ function queueOpen(type, maximumQueue) {
     return available;
 }
 
+// Map water/isolation are fixed properties of the map itself (mapWaterRatio()
+// and isIsolatedByWater() are each computed once and cached by the engine),
+// so this only needs to actually check once — waterChecked just remembers
+// that's already happened, replacing the old periodic 9-point isWaterAt()
+// sampling with an exact whole-map answer.
 function detectWaterMap() {
-    let middleX = 0;
-    let middleY = 0;
-    let hits = 0;
-    let quarterX = 0;
-    let quarterY = 0;
-    let threeQuarterX = 0;
-    let threeQuarterY = 0;
-
-    if (
-        waterChecked &&
-        waterAvailable
-    ) {
+    if (waterChecked) {
         return waterAvailable;
     }
 
-    if (gameTime() < nextWaterScan) {
-        return waterAvailable;
-    }
-
-    middleX = floor(mapWidth() / 2);
-    middleY = floor(mapHeight() / 2);
-    quarterX = floor(mapWidth() / 4);
-    quarterY = floor(mapHeight() / 4);
-    threeQuarterX = floor(mapWidth() * 3 / 4);
-    threeQuarterY = floor(mapHeight() * 3 / 4);
-    hits = 0;
-
-    if (isWaterAt(middleX, middleY)) {
-        hits = hits + 1;
-    }
-
-    if (isWaterAt(quarterX, middleY)) {
-        hits = hits + 1;
-    }
-
-    if (isWaterAt(threeQuarterX, middleY)) {
-        hits = hits + 1;
-    }
-
-    if (isWaterAt(middleX, quarterY)) {
-        hits = hits + 1;
-    }
-
-    if (isWaterAt(middleX, threeQuarterY)) {
-        hits = hits + 1;
-    }
-
-    if (isWaterAt(quarterX, quarterY)) {
-        hits = hits + 1;
-    }
-
-    if (isWaterAt(quarterX, threeQuarterY)) {
-        hits = hits + 1;
-    }
-
-    if (isWaterAt(threeQuarterX, quarterY)) {
-        hits = hits + 1;
-    }
-
-    if (isWaterAt(threeQuarterX, threeQuarterY)) {
-        hits = hits + 1;
-    }
-
-    if (
-        isWaterAt(clamp(baseX() + 70, 0, mapWidth()), baseY()) ||
-        isWaterAt(clamp(baseX() - 70, 0, mapWidth()), baseY()) ||
-        isWaterAt(baseX(), clamp(baseY() + 70, 0, mapHeight())) ||
-        isWaterAt(baseX(), clamp(baseY() - 70, 0, mapHeight()))
-    ) {
-        hits = hits + 2;
-    }
-
-    if (
-        isWaterAt(clamp(enemyBaseX() + 70, 0, mapWidth()), enemyBaseY()) ||
-        isWaterAt(clamp(enemyBaseX() - 70, 0, mapWidth()), enemyBaseY()) ||
-        isWaterAt(enemyBaseX(), clamp(enemyBaseY() + 70, 0, mapHeight())) ||
-        isWaterAt(enemyBaseX(), clamp(enemyBaseY() - 70, 0, mapHeight()))
-    ) {
-        hits = hits + 2;
-    }
-
-    waterSampleHits = max(waterSampleHits, hits);
-    waterAvailable = waterSampleHits > 0;
-
+    waterAvailable = mapWaterRatio() > 0.02;
     waterChecked = true;
-    waterScanCount = waterScanCount + 1;
-    nextWaterScan = gameTime() + 25;
+
+    if (!isolationChecked) {
+        isIsolated = isIsolatedByWater();
+        isolationChecked = true;
+    }
+
     return waterAvailable;
 }
 
@@ -4826,6 +4758,32 @@ function manageConstruction() {
         return true;
     }
 
+    // An island map (no land path to anyone — see isIsolatedByWater()) means
+    // a shipyard isn't a late-game option, it's the only way to ever reach
+    // another base at all. Hold off on every other construction option
+    // below (research lab, outposts, turrets, factory, ...) until it's
+    // built, judging affordability against the building's real cost rather
+    // than the (much larger, constantly-growing) economic reserve —
+    // otherwise a cheaper building's lower threshold keeps winning the race
+    // for the same resources every tick this can't yet afford one outright.
+    if (
+        isIsolated &&
+        !hasBuilding("shipyard")
+    ) {
+        if (
+            gameTime() >= 40 &&
+            resources() >= buildingCost("shipyard")
+        ) {
+            if (construct("shipyard")) {
+                nextBuildAttempt = gameTime() + 20;
+                return true;
+            }
+        }
+
+        nextBuildAttempt = gameTime() + 5;
+        return false;
+    }
+
     if (
         !hasBuilding("researchLab") &&
         hasBuilding("factory") &&
@@ -5555,6 +5513,16 @@ function brainScoreGoals() {
         if (!hasBuilding("shipyard")) {
             scoreNaval = scoreNaval + 110;
         }
+
+        // No land path to anyone at all (see isIsolatedByWater()) — nothing
+        // else matters until there's a way off this island, so this goal
+        // needs to actually win, not just compete.
+        if (
+            isIsolated &&
+            !hasBuilding("shipyard")
+        ) {
+            scoreNaval = scoreNaval + 500;
+        }
     }
 }
 
@@ -5788,11 +5756,29 @@ function brainExecuteNaval() {
     commandNavy();
 }
 
+// A builder that dies mid-construction leaves its building's foundation
+// stranded — stepBuilding() only progresses a building that currently has a
+// builder assigned to it, and nothing reassigns one automatically. Sweeps
+// every own building each tick and sends a free builder to finish anything
+// caught abandoned, so losing a worker costs a worker, not the building too.
+function rescueAbandonedConstruction() {
+    for (id in myBuildings()) {
+        if (
+            buildingExists(id) &&
+            buildingUnderConstruction(id) &&
+            !buildingHasBuilder(id)
+        ) {
+            resumeConstruction(id);
+        }
+    }
+}
+
 function brainExecuteGoal() {
     assignMineNetwork();
     builderCargoSafety();
     evacuateShapers();
     protectWisps();
+    rescueAbandonedConstruction();
 
     if (brainGoal == 1) {
         brainExecuteDefend();

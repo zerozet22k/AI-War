@@ -15,6 +15,7 @@ export class ScriptRuntimeError extends Error {
 
 export class StepBudgetExceededError extends Error {}
 export class CallDepthExceededError extends Error {}
+export class TimeBudgetExceededError extends Error {}
 
 /** Internal control-flow signal for `return` — caught only at the boundary
  * of the function call it belongs to, never treated as a script error. */
@@ -62,6 +63,13 @@ export class Interpreter {
   private callDepth = 0;
   private maxSteps = 0;
   private api: Record<string, HostFn> = {};
+  /** Absolute Date.now() deadline for the current run, or null for no
+   * wall-clock limit (see tick()). Independent from maxSteps: a few steps
+   * that each make an expensive host-API call can blow real time without
+   * ever approaching the step count, which the step budget alone can't
+   * catch. Only the networked path (see ScriptEngine.update) sets this —
+   * local single-player has no other player's tick to protect. */
+  private deadline: number | null = null;
 
   functionNames(): string[] {
     return [...this.functions.keys()];
@@ -71,10 +79,13 @@ export class Interpreter {
     return this.functions.has(name);
   }
 
-  /** Runs the whole program top-to-bottom — the normal once-per-tick pass. */
-  runProgram(program: Program, api: Record<string, HostFn>, maxSteps: number): void {
+  /** Runs the whole program top-to-bottom — the normal once-per-tick pass.
+   * `deadlineMs`, if given, additionally bounds wall-clock time (see
+   * `deadline` field) — omit it for the step-count-only budget. */
+  runProgram(program: Program, api: Record<string, HostFn>, maxSteps: number, deadlineMs?: number): void {
     this.api = api;
     this.maxSteps = maxSteps;
+    this.deadline = deadlineMs === undefined ? null : Date.now() + deadlineMs;
     this.steps = 0;
     this.callDepth = 0;
     this.execBlock(program.statements, null);
@@ -83,13 +94,14 @@ export class Interpreter {
   /** Calls a previously-registered top-level function by name — used to run
    * a script's own function outside the normal per-tick pass (e.g. a
    * keybind press), sharing this same persistent scope/function table. */
-  callNamed(name: string, args: Value[], api: Record<string, HostFn>, maxSteps: number): Value {
+  callNamed(name: string, args: Value[], api: Record<string, HostFn>, maxSteps: number, deadlineMs?: number): Value {
     const fn = this.functions.get(name);
     if (!fn) {
       throw new ScriptRuntimeError(`No function named "${name}()" in this script`, ORIGIN_POS);
     }
     this.api = api;
     this.maxSteps = maxSteps;
+    this.deadline = deadlineMs === undefined ? null : Date.now() + deadlineMs;
     this.steps = 0;
     this.callDepth = 0;
     return this.callUserFunction(fn, args);
@@ -99,6 +111,12 @@ export class Interpreter {
     this.steps += 1;
     if (this.steps > this.maxSteps) {
       throw new StepBudgetExceededError('Script exceeded its step budget (likely an infinite loop) — this run was aborted');
+    }
+    // Checked every 64 steps, not every step — Date.now() is comparatively
+    // expensive to call on every single AST node visited, and the step
+    // cadence already bounds how far a single overshoot between checks can go.
+    if (this.deadline !== null && (this.steps & 0x3f) === 0 && Date.now() > this.deadline) {
+      throw new TimeBudgetExceededError('Script exceeded its per-tick time budget — aborted to keep the match responsive for other players');
     }
   }
 

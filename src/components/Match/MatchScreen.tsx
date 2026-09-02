@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { PhaserGame } from '../../game/phaser/PhaserGame';
 import { MatchController } from '../../game/matchController';
 import { createOpponentStrategy } from '../../game/ai/strategies';
+import { PLAYER_ID_LIST, type PlayerId } from '../../types/game';
+import type { StrategyConfig } from '../../types/rules';
 import { useAppStore } from '../../state/store';
 import { useMultiplayerStore } from '../../net/multiplayerStore';
 import { findKeyForAction, formatKeyCode } from '../../state/keybindScript';
@@ -11,6 +13,7 @@ import { SelectedEntityPanel } from './SelectedEntityPanel';
 import { Button } from '../shared/Button';
 import { gameAudio } from '../../game/audio/GameAudio';
 import { raceThemeStyle } from '../../game/raceVisuals';
+import { captureSave } from '../../game/saveGame';
 import './MatchScreen.css';
 
 function formatDuration(seconds: number): string {
@@ -28,9 +31,11 @@ export function MatchScreen() {
   const keybinds = useAppStore((s) => s.keybinds);
   const selectedEntities = useAppStore((s) => s.selectedEntitySnapshots);
   const localMatchSetup = useAppStore((s) => s.localMatchSetup);
+  const pendingLoadedSave = useAppStore((s) => s.pendingLoadedSave);
 
   const mpController = useMultiplayerStore((s) => s.controller);
   const mpSide = useMultiplayerStore((s) => s.side);
+  const mpMapId = useMultiplayerStore((s) => s.mapId);
   const mpDisconnectedPlayers = useMultiplayerStore((s) => s.disconnectedPlayers);
   const leaveMatch = useMultiplayerStore((s) => s.leaveMatch);
 
@@ -39,22 +44,56 @@ export function MatchScreen() {
 
   // Local single-player: own and step a real MatchController, recreated
   // whenever a fresh match starts. Ignored when networked (mpController wins).
-  const localEnemyStrategy = useMemo(
-    () => createOpponentStrategy(`${localMatchSetup.aiDifficulty} ${localMatchSetup.enemyRace} AI`, localMatchSetup.aiDifficulty, localMatchSetup.enemyRace),
-    [matchStartToken, localMatchSetup.aiDifficulty, localMatchSetup.enemyRace],
+  // Up to 3 AI-controlled opponent slots (enemy, player3, player4), each
+  // with its own race/difficulty/team/color chosen in the lobby.
+  const activeOpponentSlots = PLAYER_ID_LIST.slice(1, 1 + localMatchSetup.activeOpponentCount);
+  const localOpponentStrategies = useMemo(
+    () => Object.fromEntries(activeOpponentSlots.map((slot, i) => {
+      const o = localMatchSetup.opponents[i];
+      return [slot, createOpponentStrategy(`${o.aiDifficulty} ${o.race} AI`, o.aiDifficulty, o.race)];
+    })) as Partial<Record<PlayerId, StrategyConfig>>,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [matchStartToken, localMatchSetup.activeOpponentCount, ...localMatchSetup.opponents.flatMap((o) => [o.race, o.aiDifficulty])],
   );
-  const localController = useMemo(
-    () =>
-      new MatchController({
-        playerStrategy,
-        enemyStrategy: localEnemyStrategy,
-        races: { player: localMatchSetup.playerRace, enemy: localMatchSetup.enemyRace },
-        mapId: localMatchSetup.mapId,
-        aiDifficulty: localMatchSetup.aiDifficulty,
+  const localController = useMemo(() => {
+    // A save picked from the Load Game screen resumes that exact match
+    // instead of building a fresh one from the lobby's current setup —
+    // see saveGame.ts. Cleared by startNewMatch(), so a later "Play with
+    // AI" click falls straight back to the normal fresh path below.
+    if (pendingLoadedSave) {
+      const save = pendingLoadedSave;
+      return new MatchController({
+        playerStrategy: save.strategies.player!,
+        enemyStrategy: save.strategies.enemy ?? save.strategies.player!,
+        strategies: save.strategies,
+        activePlayers: save.activePlayers,
+        races: save.races,
+        lobby: save.lobby,
+        mapId: save.mapId,
+        aiDifficulty: save.aiDifficulty ?? undefined,
         recordHistoryForPlayer: true,
-      }),
-    [matchStartToken, localEnemyStrategy, localMatchSetup.playerRace, localMatchSetup.enemyRace, localMatchSetup.mapId], // eslint-disable-line react-hooks/exhaustive-deps
-  );
+        resume: { simState: save.simState, phase: save.phase, activityLog: save.activityLog },
+      });
+    }
+    return new MatchController({
+      playerStrategy,
+      enemyStrategy: localOpponentStrategies.enemy!,
+      strategies: localOpponentStrategies,
+      activePlayers: ['player', ...activeOpponentSlots],
+      races: {
+        player: localMatchSetup.playerRace,
+        ...Object.fromEntries(activeOpponentSlots.map((slot, i) => [slot, localMatchSetup.opponents[i].race])),
+      },
+      lobby: {
+        player: { team: localMatchSetup.playerTeam, color: localMatchSetup.playerColor },
+        ...Object.fromEntries(activeOpponentSlots.map((slot, i) => [slot, { team: localMatchSetup.opponents[i].team, color: localMatchSetup.opponents[i].color }])),
+      },
+      mapId: localMatchSetup.mapId,
+      aiDifficulty: localMatchSetup.opponents[0].aiDifficulty,
+      recordHistoryForPlayer: true,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matchStartToken, pendingLoadedSave, localOpponentStrategies, localMatchSetup.playerRace, localMatchSetup.playerTeam, localMatchSetup.playerColor, localMatchSetup.mapId]);
 
   const controller = mpController ?? localController;
   // The command center is always present from turn one, so it reliably tells
@@ -146,13 +185,18 @@ export function MatchScreen() {
   }, [keybinds, isNetworked, controller, mySide, codeOpen]);
 
   const ended = hud.matchPhase === 'ended' || hud.matchResult;
-  const won = hud.matchResult?.winner === mySide;
-  const draw = hud.matchResult?.winner == null;
+  const won = hud.matchResult?.winners.includes(mySide) ?? false;
+  const draw = hud.matchResult ? hud.matchResult.winners.length === 0 : false;
   const codeKey = findKeyForAction(keybinds, 'toggle_strategy_editor');
   const codeKeyHint = codeKey ? formatKeyCode(codeKey) : null;
+  // "Restart" re-runs the lobby's current setup from scratch — meaningless
+  // for a resumed save (there's no fresh seed to restart from, only the
+  // save itself, which is what Load Game is for), so it's hidden then.
+  const isLoadedMatch = !isNetworked && pendingLoadedSave !== null;
 
   function exitToMenu() {
     if (isNetworked) leaveMatch();
+    useAppStore.getState().setPendingLoadedSave(null);
     goTo('menu');
   }
 
@@ -161,6 +205,22 @@ export function MatchScreen() {
     setCodeOpen(false);
     setToast(null);
     useAppStore.getState().startNewMatch();
+  }
+
+  const [saveOpen, setSaveOpen] = useState(false);
+  const [saveLabel, setSaveLabel] = useState('');
+
+  function confirmSave() {
+    const label = saveLabel.trim() || `Save — ${new Date().toLocaleString()}`;
+    captureSave(controller, {
+      mapId: isNetworked ? (mpMapId ?? localMatchSetup.mapId) : localMatchSetup.mapId,
+      aiDifficulty: isNetworked ? null : (pendingLoadedSave?.aiDifficulty ?? localMatchSetup.opponents[0]?.aiDifficulty ?? null),
+      networked: isNetworked,
+      label,
+    });
+    setSaveOpen(false);
+    setSaveLabel('');
+    setToast('Game saved.');
   }
 
   return (
@@ -212,28 +272,50 @@ export function MatchScreen() {
           <div className="match-screen__end-overlay" onMouseDown={(e) => e.target === e.currentTarget && setPauseOpen(false)}>
             <div className="match-screen__end-panel">
               <h2>Paused</h2>
-              <div className="match-screen__end-actions">
-                <Button variant="primary" onClick={() => setPauseOpen(false)}>
-                  Resume
-                </Button>
-                {isNetworked ? (
-                  <Button variant="secondary" onClick={exitToMenu}>
-                    Leave Match
+              {saveOpen ? (
+                <div className="match-screen__save-form">
+                  <input
+                    className="match-screen__save-input"
+                    value={saveLabel}
+                    onChange={(e) => setSaveLabel(e.target.value)}
+                    placeholder={`Save — ${new Date().toLocaleString()}`}
+                    aria-label="Save name"
+                    autoFocus
+                  />
+                  <div className="match-screen__end-actions">
+                    <Button variant="primary" onClick={confirmSave}>Confirm Save</Button>
+                    <Button variant="ghost" onClick={() => setSaveOpen(false)}>Cancel</Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="match-screen__end-actions">
+                  <Button variant="primary" onClick={() => setPauseOpen(false)}>
+                    Resume
                   </Button>
-                ) : (
-                  <>
-                    <Button variant="secondary" onClick={restartLocalMatch}>
-                      ⟳ Restart
+                  <Button variant="secondary" onClick={() => setSaveOpen(true)}>
+                    💾 Save Game
+                  </Button>
+                  {isNetworked ? (
+                    <Button variant="secondary" onClick={exitToMenu}>
+                      Leave Match
                     </Button>
-                    <Button variant="secondary" onClick={() => goTo('settings')}>
-                      Settings
-                    </Button>
-                    <Button variant="ghost" onClick={exitToMenu}>
-                      Main Menu
-                    </Button>
-                  </>
-                )}
-              </div>
+                  ) : (
+                    <>
+                      {!isLoadedMatch && (
+                        <Button variant="secondary" onClick={restartLocalMatch}>
+                          ⟳ Restart
+                        </Button>
+                      )}
+                      <Button variant="secondary" onClick={() => goTo('settings')}>
+                        Settings
+                      </Button>
+                      <Button variant="ghost" onClick={exitToMenu}>
+                        Main Menu
+                      </Button>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         )}

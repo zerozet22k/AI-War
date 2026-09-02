@@ -6,9 +6,10 @@ import { createDefaultStrategy, normalizeStrategy, type AiDifficulty } from '../
 import { loadJSON, saveJSON } from '../utils/storage';
 import type { ScriptError } from '../game/ai/script/errors';
 import { DEFAULT_KEYBIND_SCRIPT, compileKeybinds } from './keybindScript';
-import { DEFAULT_MAP_ID, type MapId } from '../game/maps';
+import { DEFAULT_MAP_ID, MAPS, type MapId } from '../game/maps';
+import type { SaveGameData } from '../game/saveGame';
 
-export type Screen = 'menu' | 'strategyEditor' | 'match' | 'settings' | 'multiplayerLobby' | 'apiReference';
+export type Screen = 'menu' | 'lobby' | 'strategyEditor' | 'match' | 'settings' | 'multiplayerLobby' | 'apiReference' | 'loadGame';
 
 const STRATEGY_STORAGE_KEY = 'ai-war.strategy.v1';
 const RACE_STRATEGIES_STORAGE_KEY = 'ai-war.raceStrategies.v1';
@@ -26,18 +27,43 @@ export interface CameraSettings {
 
 const DEFAULT_CAMERA_SETTINGS: CameraSettings = { panSpeed: 1, zoomSpeed: 1 };
 
+/** Default per-slot colors, matching Simulation.ts's own DEFAULT_OWNER_COLOR
+ * — an unconfigured lobby row renders exactly as the game always has. */
+const DEFAULT_SLOT_COLORS = [0x3b82f6, 0xef4444, 0x22c55e, 0xf59e0b] as const;
+
+export interface LocalOpponentSetup {
+  race: RaceId;
+  aiDifficulty: AiDifficulty;
+  /** Optional team grouping — see PlayerState.team. Defaults (below) give
+   * every slot its own distinct number, i.e. plain free-for-all; set two
+   * slots to the same number to make them allies. */
+  team: number;
+  color: number;
+}
+
 export interface LocalMatchSetup {
   playerRace: RaceId;
-  enemyRace: RaceId;
-  aiDifficulty: AiDifficulty;
+  playerTeam: number;
+  playerColor: number;
   mapId: MapId;
+  /** AI-controlled slots beyond the human player, in PLAYER_ID_LIST order
+   * (enemy, player3, player4) — only the first `activeOpponentCount` of
+   * these are actually used when a match starts. */
+  opponents: LocalOpponentSetup[];
+  activeOpponentCount: 1 | 2 | 3;
 }
 
 const DEFAULT_MATCH_SETUP: LocalMatchSetup = {
   playerRace: 'ironclad',
-  enemyRace: 'aether',
-  aiDifficulty: 'standard',
+  playerTeam: 1,
+  playerColor: DEFAULT_SLOT_COLORS[0],
   mapId: DEFAULT_MAP_ID,
+  opponents: [
+    { race: 'aether', aiDifficulty: 'standard', team: 2, color: DEFAULT_SLOT_COLORS[1] },
+    { race: 'nullforge', aiDifficulty: 'standard', team: 3, color: DEFAULT_SLOT_COLORS[2] },
+    { race: 'ironclad', aiDifficulty: 'standard', team: 4, color: DEFAULT_SLOT_COLORS[3] },
+  ],
+  activeOpponentCount: 1,
 };
 
 type RaceStrategies = Record<RaceId, StrategyConfig>;
@@ -66,6 +92,12 @@ function emptyMatchStats(): MatchStats {
   return { unitsCreated: 0, unitsLost: 0, buildingsConstructed: 0, resourcesGathered: 0 };
 }
 
+export interface HudPlayerInfo {
+  name: string;
+  color: number;
+  team: number;
+}
+
 export interface HudSnapshot {
   matchPhase: MatchPhase;
   resources: Record<PlayerId, number>;
@@ -77,6 +109,7 @@ export interface HudSnapshot {
   matchDuration: number;
   activePlayers: PlayerId[];
   completedResearch: Record<PlayerId, ResearchType[]>;
+  players: Record<PlayerId, HudPlayerInfo>;
 }
 
 function createInitialHud(): HudSnapshot {
@@ -91,6 +124,10 @@ function createInitialHud(): HudSnapshot {
     matchDuration: 0,
     activePlayers: ['player', 'enemy'],
     completedResearch: Object.fromEntries(PLAYER_ID_LIST.map((owner) => [owner, [] as ResearchType[]])) as Record<PlayerId, ResearchType[]>,
+    players: Object.fromEntries(PLAYER_ID_LIST.map((owner, index) => [
+      owner,
+      { name: owner, color: DEFAULT_SLOT_COLORS[index], team: index },
+    ])) as Record<PlayerId, HudPlayerInfo>,
   };
 }
 
@@ -106,9 +143,14 @@ interface AppState {
 
   localMatchSetup: LocalMatchSetup;
   setPlayerRace: (race: RaceId) => void;
-  setEnemyRace: (race: RaceId) => void;
-  setAiDifficulty: (difficulty: AiDifficulty) => void;
+  setPlayerTeam: (team: number) => void;
+  setPlayerColor: (color: number) => void;
   setMapId: (mapId: MapId) => void;
+  setOpponentCount: (count: 1 | 2 | 3) => void;
+  setOpponentRace: (index: number, race: RaceId) => void;
+  setOpponentDifficulty: (index: number, difficulty: AiDifficulty) => void;
+  setOpponentTeam: (index: number, team: number) => void;
+  setOpponentColor: (index: number, color: number) => void;
 
   keybindScript: string;
   keybinds: Record<string, string>; // derived from keybindScript: normalized key code -> action id (or a script function name)
@@ -131,6 +173,14 @@ interface AppState {
   goTo: (screen: Screen) => void;
   matchStartToken: number;
   startNewMatch: () => void;
+
+  /** A save picked from the Load Game screen, waiting to be consumed by
+   * whichever screen the user sends it to next — MatchScreen resumes it
+   * locally, or MultiplayerLobby uploads it to host as a resumed room.
+   * Cleared once consumed (or if the user backs out beforehand). */
+  pendingLoadedSave: SaveGameData | null;
+  setPendingLoadedSave: (save: SaveGameData | null) => void;
+  loadSavedMatch: (save: SaveGameData) => void;
 
   /** One id for a plain click, several for a drag-select box — inspection
    * only (see SelectedEntityPanel): this is a "script war," so there is no
@@ -195,21 +245,59 @@ export const useAppStore = create<AppState>((set, get) => ({
       saveJSON(MATCH_SETUP_STORAGE_KEY, localMatchSetup);
       return { localMatchSetup, raceStrategies, playerStrategy: raceStrategies[playerRace] };
     }),
-  setEnemyRace: (enemyRace) =>
+  setPlayerTeam: (playerTeam) =>
     set((state) => {
-      const localMatchSetup = { ...state.localMatchSetup, enemyRace };
+      const localMatchSetup = { ...state.localMatchSetup, playerTeam };
       saveJSON(MATCH_SETUP_STORAGE_KEY, localMatchSetup);
       return { localMatchSetup };
     }),
-  setAiDifficulty: (aiDifficulty) =>
+  setPlayerColor: (playerColor) =>
     set((state) => {
-      const localMatchSetup = { ...state.localMatchSetup, aiDifficulty };
+      const localMatchSetup = { ...state.localMatchSetup, playerColor };
       saveJSON(MATCH_SETUP_STORAGE_KEY, localMatchSetup);
       return { localMatchSetup };
     }),
   setMapId: (mapId) =>
     set((state) => {
-      const localMatchSetup = { ...state.localMatchSetup, mapId };
+      // A smaller map caps how many opponents fit — clamp down rather than
+      // leaving a stale opponent count the map can no longer seat.
+      const maxOpponents = Math.max(1, MAPS[mapId].maxPlayers - 1) as 1 | 2 | 3;
+      const activeOpponentCount = Math.min(state.localMatchSetup.activeOpponentCount, maxOpponents) as 1 | 2 | 3;
+      const localMatchSetup = { ...state.localMatchSetup, mapId, activeOpponentCount };
+      saveJSON(MATCH_SETUP_STORAGE_KEY, localMatchSetup);
+      return { localMatchSetup };
+    }),
+  setOpponentCount: (activeOpponentCount) =>
+    set((state) => {
+      const localMatchSetup = { ...state.localMatchSetup, activeOpponentCount };
+      saveJSON(MATCH_SETUP_STORAGE_KEY, localMatchSetup);
+      return { localMatchSetup };
+    }),
+  setOpponentRace: (index, race) =>
+    set((state) => {
+      const opponents = state.localMatchSetup.opponents.map((o, i) => (i === index ? { ...o, race } : o));
+      const localMatchSetup = { ...state.localMatchSetup, opponents };
+      saveJSON(MATCH_SETUP_STORAGE_KEY, localMatchSetup);
+      return { localMatchSetup };
+    }),
+  setOpponentDifficulty: (index, aiDifficulty) =>
+    set((state) => {
+      const opponents = state.localMatchSetup.opponents.map((o, i) => (i === index ? { ...o, aiDifficulty } : o));
+      const localMatchSetup = { ...state.localMatchSetup, opponents };
+      saveJSON(MATCH_SETUP_STORAGE_KEY, localMatchSetup);
+      return { localMatchSetup };
+    }),
+  setOpponentTeam: (index, team) =>
+    set((state) => {
+      const opponents = state.localMatchSetup.opponents.map((o, i) => (i === index ? { ...o, team } : o));
+      const localMatchSetup = { ...state.localMatchSetup, opponents };
+      saveJSON(MATCH_SETUP_STORAGE_KEY, localMatchSetup);
+      return { localMatchSetup };
+    }),
+  setOpponentColor: (index, color) =>
+    set((state) => {
+      const opponents = state.localMatchSetup.opponents.map((o, i) => (i === index ? { ...o, color } : o));
+      const localMatchSetup = { ...state.localMatchSetup, opponents };
       saveJSON(MATCH_SETUP_STORAGE_KEY, localMatchSetup);
       return { localMatchSetup };
     }),
@@ -253,6 +341,24 @@ export const useAppStore = create<AppState>((set, get) => ({
       pendingCoordinateInsert: false,
       isPaused: false,
       simSpeed: 2,
+      // A fresh local match overrides any save the Load Game screen queued up.
+      pendingLoadedSave: null,
+    })),
+
+  pendingLoadedSave: null,
+  setPendingLoadedSave: (save) => set({ pendingLoadedSave: save }),
+  loadSavedMatch: (save) =>
+    set((s) => ({
+      screen: 'match',
+      matchStartToken: s.matchStartToken + 1,
+      hud: createInitialHud(),
+      selectedEntityIds: [],
+      selectedEntitySnapshots: [],
+      followEntityId: null,
+      pendingCoordinateInsert: false,
+      isPaused: false,
+      simSpeed: 2,
+      pendingLoadedSave: save,
     })),
 
   selectedEntityIds: [],

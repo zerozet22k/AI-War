@@ -19,7 +19,6 @@ import type {
 import { PLAYER_ID_LIST } from '../../types/game';
 import {
   BALLISTIC_PROJECTILES,
-  BUILDING_COSTS,
   BUILD_ARRIVAL_RADIUS,
   COMMAND_CENTER_UNDER_ATTACK_WINDOW,
   DAMAGE_MULTIPLIER,
@@ -30,15 +29,12 @@ import {
   PRODUCER_FOR_UNIT,
   PROJECTILE_SPEED,
   PROJECTILE_SPLASH_RADIUS,
-  RESEARCH_COSTS,
   RESEARCH_DURATION,
   RESEARCH_PREREQUISITE,
   RESEARCH_PRODUCER,
   RESOURCE_GARRISON_RADIUS,
   STARTING_RESOURCES,
   UNIT_BUILD_TIME,
-  UNIT_COSTS,
-  UNIT_STATS,
   UNIT_RESEARCH_REQUIREMENT,
   UNIT_VOLUME_SIZE,
   TRANSPORT_CAPACITY,
@@ -60,6 +56,18 @@ import { makeId } from '../../utils/id';
 
 const MAX_PRODUCTION_QUEUE = 5;
 const MIN_BUILD_SPACING = 70;
+
+/** Default per-slot color when a lobby doesn't choose one — matches this
+ * game's original hardcoded per-slot colors, so an unconfigured match (every
+ * existing test, every AI-vs-AI smoke test) renders exactly as it always has.
+ * Exported so other lobby surfaces (the multiplayer room) can default a
+ * newly-joined slot's color the same way, without duplicating the palette. */
+export const DEFAULT_OWNER_COLOR: Record<PlayerId, number> = {
+  player: 0x3b82f6,
+  enemy: 0xef4444,
+  player3: 0x22c55e,
+  player4: 0xf59e0b,
+};
 
 export function otherPlayer(owner: PlayerId): PlayerId {
   return owner === 'player' ? 'enemy' : 'player';
@@ -114,6 +122,11 @@ export class Simulation {
   ) as Record<PlayerId, Map<string, KnownEnemyBuilding>>;
   private movementPaths = new Map<string, MovementPathCache>();
   private skillAutocastAccumulator = 0;
+  /** mapWaterRatio()/isIsolatedByWater() are fixed properties of the map (+
+   * active roster) for the whole match — computed once on first query, not
+   * per-tick. */
+  private cachedWaterRatio: number | null = null;
+  private cachedIsolatedByWater: Partial<Record<PlayerId, boolean>> = {};
 
   /** `races` lets the menu/lobby's chosen races reach the match; anything
    * left unspecified (including every existing call site — tests, the
@@ -124,35 +137,63 @@ export class Simulation {
     mapId?: MapId,
     activePlayers: PlayerId[] = ['player', 'enemy'],
     randomizeSpawns = false,
+    lobby?: Partial<Record<PlayerId, { name?: string; team?: number; color?: number }>>,
+    /** A previously-captured SimState (see game/saveGame.ts) to resume from
+     * instead of spawning a fresh match — every other constructor param is
+     * ignored when this is given, since the resumed state already carries
+     * its own map/players/units/buildings. Deep-cloned so the caller's copy
+     * (e.g. a save loaded from localStorage or a network message) is never
+     * aliased into live simulation state. */
+    resumeState?: SimState,
   ) {
-    const map = generateMap(mapId, activePlayers, randomizeSpawns);
-    const players = Object.fromEntries(PLAYER_ID_LIST.map((owner) => [owner, {
-      id: owner,
-      race: races?.[owner] ?? DEFAULT_RACE_FOR_PLAYER[owner],
-      resources: STARTING_RESOURCES,
-      completedResearch: [],
-    }])) as unknown as SimState['players'];
-    const stats = Object.fromEntries(PLAYER_ID_LIST.map((owner) => [owner, emptyStats()])) as SimState['stats'];
-    this.state = {
-      time: 0,
-      map,
-      players,
-      units: [],
-      buildings: [],
-      projectiles: [],
-      matchResult: null,
-      stats,
-      activePlayers: [...activePlayers],
-    };
+    if (resumeState) {
+      this.state = structuredClone(resumeState);
+    } else {
+      const map = generateMap(mapId, activePlayers, randomizeSpawns);
+      const players = Object.fromEntries(PLAYER_ID_LIST.map((owner, index) => {
+        const race = races?.[owner] ?? DEFAULT_RACE_FOR_PLAYER[owner];
+        return [owner, {
+          id: owner,
+          race,
+          resources: STARTING_RESOURCES,
+          completedResearch: [],
+          name: lobby?.[owner]?.name ?? RACES[race].name,
+          // Defaulting every slot to its own PLAYER_ID_LIST index reproduces
+          // today's plain free-for-all (see PlayerState.team) — teaming up
+          // only happens if the lobby explicitly gives two slots the same
+          // number.
+          team: lobby?.[owner]?.team ?? index,
+          color: lobby?.[owner]?.color ?? DEFAULT_OWNER_COLOR[owner],
+        }];
+      })) as unknown as SimState['players'];
+      const stats = Object.fromEntries(PLAYER_ID_LIST.map((owner) => [owner, emptyStats()])) as SimState['stats'];
+      this.state = {
+        time: 0,
+        map,
+        players,
+        units: [],
+        buildings: [],
+        projectiles: [],
+        matchResult: null,
+        stats,
+        activePlayers: [...activePlayers],
+      };
 
-    for (const owner of activePlayers) {
-      const base = map.bases[owner];
-      const cc = createBuilding('commandCenter', owner, base, this.state.players[owner].race);
-      this.state.buildings.push(cc);
-      this.state.stats[owner].buildingsConstructed += 1;
-      const builderSpot = this.startingWorkerPosition(base);
-      this.spawnUnit('builder', owner, builderSpot);
+      for (const owner of activePlayers) {
+        const base = map.bases[owner];
+        const cc = createBuilding('commandCenter', owner, base, this.state.players[owner].race);
+        this.state.buildings.push(cc);
+        this.state.stats[owner].buildingsConstructed += 1;
+        const builderSpot = this.startingWorkerPosition(base);
+        this.spawnUnit('builder', owner, builderSpot);
+      }
     }
+    // Rebuilds every per-player discovery/vision cache from the state above —
+    // for a resumed match this only reconstructs from CURRENT vision (the
+    // accumulated fog-of-war "ghost" memory a long match had built up isn't
+    // itself part of SimState, so it starts blank again on load, same as
+    // ScriptEngine's persistent `let` variables — a known, acceptable gap in
+    // an otherwise faithful resume).
     this.updateResourceDiscovery();
     this.updateEnemyBaseDiscovery();
     this.updateExploration();
@@ -241,7 +282,7 @@ export class Simulation {
   }
 
   getArmyStrength(owner: PlayerId): number {
-    return this.getUnits(owner).reduce((sum, u) => sum + UNIT_STATS[u.type].power * (u.hp / u.maxHp), 0);
+    return this.getUnits(owner).reduce((sum, u) => sum + u.power * (u.hp / u.maxHp), 0);
   }
 
   getGameTime(): number {
@@ -256,12 +297,24 @@ export class Simulation {
     return RACES[unit.race].units[unit.raceUnitId]?.skills?.find((skill) => skill.id === skillId);
   }
 
-  private activeSkillDefinition(unit: UnitState, effect: 'speedBoost' | 'weaponBoost' | 'fortify') {
+  /** The "generic self-buff" effects — activation just arms a timer
+   * (state.activeRemaining), and each one's actual mechanical effect is read
+   * independently wherever that stat is consumed (effectiveUnitSpeed,
+   * effectiveAttackRange/effectiveAttackDamage, effectiveAttackCooldown,
+   * dealDamage's fortify/lifeDrain/chainOverload checks, and the phaseCloak
+   * skip in getNearestAttackableEnemy). repairPulse/slowPulse/stunSlam/
+   * shieldBarrier are NOT here — they resolve instantly in useUnitSkill
+   * itself instead of arming a timer. */
+  private activeSkillDefinition(
+    unit: UnitState,
+    effect: 'speedBoost' | 'weaponBoost' | 'fortify' | 'phaseCloak' | 'lifeDrain' | 'overclockSurge' | 'chainOverload',
+  ) {
     const active = unit.skills.find((skill) => skill.activeRemaining > 0 && this.skillDefinition(unit, skill.id)?.effect === effect);
     return active ? this.skillDefinition(unit, active.id) : undefined;
   }
 
   private effectiveUnitSpeed(unit: UnitState): number {
+    if (unit.stunnedUntil > this.state.time) return 0;
     const skill = this.activeSkillDefinition(unit, 'speedBoost');
     const slowed = unit.slowUntil > this.state.time ? unit.slowMultiplier : 1;
     return unit.speed * (1 + (skill?.magnitude ?? 0)) * slowed;
@@ -275,6 +328,14 @@ export class Simulation {
   private effectiveAttackDamage(unit: UnitState): number {
     const skill = this.activeSkillDefinition(unit, 'weaponBoost');
     return unit.attack * (1 + (skill?.magnitude ?? 0));
+  }
+
+  /** Nullforge's overclockSurge: attack cooldown shortened (fires more
+   * often) while active — a rate-of-fire buff, distinct from weaponBoost's
+   * per-hit damage/range increase. */
+  private effectiveAttackCooldown(unit: UnitState): number {
+    const skill = this.activeSkillDefinition(unit, 'overclockSurge');
+    return unit.attackCooldown * (1 - (skill?.magnitude ?? 0));
   }
 
   useUnitSkill(owner: PlayerId, unitId: string, skillId: string): boolean {
@@ -307,6 +368,24 @@ export class Simulation {
         slowed = true;
       }
       if (!slowed) return false;
+    } else if (definition.effect === 'stunSlam') {
+      // Ironclad's hard-CC AoE: unlike slowPulse's partial speed cut, a
+      // stunned unit can neither move nor attack at all for the duration —
+      // see effectiveUnitSpeed()/attackTick().
+      const radius = definition.radius ?? 110;
+      const enemyUnits = this.enemyEntities(owner).filter((e): e is UnitState => e.kind === 'unit' && e.hp > 0);
+      let stunned = false;
+      for (const enemy of enemyUnits) {
+        if (distance(unit.position, enemy.position) > radius) continue;
+        enemy.stunnedUntil = this.state.time + (definition.duration ?? 2.5);
+        stunned = true;
+      }
+      if (!stunned) return false;
+    } else if (definition.effect === 'shieldBarrier') {
+      // Ironclad's absorb shield: a flat pool consumed in dealDamage()
+      // before hp, not a %-reduction like fortify — it can be fully
+      // depleted mid-fight, a fortify never "runs out".
+      unit.shieldRemaining = Math.round(unit.maxHp * definition.magnitude);
     } else {
       state.activeRemaining = Math.max(0.1, definition.duration ?? 4);
     }
@@ -318,9 +397,11 @@ export class Simulation {
 
   /** Creates a unit, adds it to the sim, and records it in that owner's stats. */
   private spawnUnit(type: UnitType, owner: PlayerId, position: Vector2, raceUnitId?: string): UnitState {
-    const domain = UNIT_STATS[type].movementDomain;
+    const race = this.state.players[owner].race;
+    const resolvedRaceUnitId = raceUnitId ?? unitEntryForArchetype(race, type)?.id ?? type;
+    const domain = RACES[race].units[resolvedRaceUnitId]?.movementDomain ?? 'ground';
     const spawnPosition = domain === 'sea' ? this.nearestTerrainPosition(position, true) : position;
-    const unit = createUnit(type, owner, spawnPosition, this.state.players[owner].race, raceUnitId);
+    const unit = createUnit(type, owner, spawnPosition, race, resolvedRaceUnitId);
     for (const research of this.state.players[owner].completedResearch) this.applyResearchToUnit(unit, research);
     this.state.units.push(unit);
     this.state.stats[owner].unitsCreated += 1;
@@ -338,31 +419,49 @@ export class Simulation {
   }
 
   private enemyEntities(owner: PlayerId): Entity[] {
-    return this.state.activePlayers.filter((candidate) => candidate !== owner)
+    return this.opponentPlayers(owner)
       .flatMap((candidate) => this.allEntities(candidate).filter((e) => e.kind !== 'building' || this.isBuildingVisibleTo(owner, e)));
   }
 
   /** A freshly-queued foundation (underConstruction with no real progress
    * yet — its builder hasn't arrived and started working) doesn't exist as
-   * far as anyone but its owner is concerned: invisible and untargetable no
+   * far as anyone but its owner (and owner's teammates, who share full
+   * knowledge same as vision) is concerned: invisible and untargetable no
    * matter how good the viewer's vision of that spot is, exactly like a
    * building nobody has scouted yet. The instant its builder is on site and
    * progress actually starts, it becomes a normal half-built structure —
    * visible (subject to the usual sight-range fog) and destroyable like any
    * other building mid-construction. */
   isBuildingVisibleTo(viewer: PlayerId, building: BuildingState): boolean {
-    if (building.owner === viewer) return true;
+    if (this.isAlly(building.owner, viewer)) return true;
     if (building.underConstruction && building.constructionProgress <= 0) return false;
     return this.isVisibleTo(viewer, building.position);
   }
 
+  /** Same team (see PlayerState.team) — teammates share vision, can't
+   * target each other, and win/lose together. Always true for a player and
+   * itself. Team assignment defaults to one distinct number per slot, so
+   * this is `false` for every other player unless a lobby explicitly put
+   * two slots on the same team. */
+  isAlly(a: PlayerId, b: PlayerId): boolean {
+    return a === b || this.state.players[a].team === this.state.players[b].team;
+  }
+
+  /** Every other active player NOT on owner's team — what "the enemy" means
+   * everywhere in this class (combat, vision, scoring). A teammate is never
+   * included here even though it's a different PlayerId. */
   opponentPlayers(owner: PlayerId): PlayerId[] {
-    return this.state.activePlayers.filter((candidate) => candidate !== owner);
+    return this.state.activePlayers.filter((candidate) => !this.isAlly(candidate, owner));
+  }
+
+  /** Every other active player ON owner's team, owner itself excluded. */
+  teammatesOf(owner: PlayerId): PlayerId[] {
+    return this.state.activePlayers.filter((candidate) => candidate !== owner && this.isAlly(candidate, owner));
   }
 
   primaryOpponent(owner: PlayerId): PlayerId | undefined {
-    return this.state.activePlayers.find((candidate) => candidate !== owner && this.getCommandCenter(candidate))
-      ?? this.state.activePlayers.find((candidate) => candidate !== owner);
+    const opponents = this.opponentPlayers(owner);
+    return opponents.find((candidate) => this.getCommandCenter(candidate)) ?? opponents[0];
   }
 
   getNearestEnemyEntity(owner: PlayerId, from: Vector2): Entity | undefined {
@@ -396,11 +495,19 @@ export class Simulation {
     return best;
   }
 
+  /** Aether's phaseCloak: while active, this unit can't be picked as anyone's
+   * attack target — an evasion mechanic, distinct from fortify's damage
+   * reduction (a cloaked unit isn't shot at all, not shot-and-shrugged-off). */
+  private isPhaseCloaked(entity: Entity): boolean {
+    return entity.kind === 'unit' && this.activeSkillDefinition(entity, 'phaseCloak') !== undefined;
+  }
+
   private getNearestAttackableEnemy(attacker: UnitState | BuildingState): Entity | undefined {
     const enemies = this.enemyEntities(attacker.owner);
     let best: Entity | undefined;
     let bestDist = Infinity;
     for (const enemy of enemies) {
+      if (this.isPhaseCloaked(enemy)) continue;
       const domain = enemy.kind === 'unit' ? enemy.movementDomain : 'ground';
       if (attacker.kind === 'unit' && !attacker.targetDomains.includes(domain)) continue;
       const d = distance(attacker.position, enemy.position);
@@ -444,7 +551,7 @@ export class Simulation {
           (b) => b.owner === owner && b.type === producerType && !b.underConstruction && b.hp > 0 && b.productionQueue.length < MAX_PRODUCTION_QUEUE,
         );
     if (!producer) return false;
-    const cost = UNIT_COSTS[unitType];
+    const cost = RACES[this.state.players[owner].race].units[raceUnitId]?.cost ?? 0;
     if (this.state.players[owner].resources < cost) return false;
     this.state.players[owner].resources -= cost;
     producer.productionQueue.push({
@@ -472,7 +579,7 @@ export class Simulation {
           (b) => b.owner === owner && b.type === producerType && !b.underConstruction && b.hp > 0 && b.researchQueue.length === 0,
         );
     if (!lab) return false;
-    const cost = RESEARCH_COSTS[researchType];
+    const cost = RACES[player.race].researchCosts[researchType];
     if (player.resources < cost) return false;
     player.resources -= cost;
     lab.researchQueue.push({ id: makeId('research'), researchType, progress: 0, duration: RESEARCH_DURATION[researchType] });
@@ -489,7 +596,7 @@ export class Simulation {
       ? resolveRaceBuilding(this.state.players[owner].race, raceBuildingId)
       : buildingEntryForArchetype(this.state.players[owner].race, buildingType);
     if (!entry || entry.definition.archetype !== buildingType) return false;
-    const cost = BUILDING_COSTS[buildingType];
+    const cost = entry.definition.cost;
     if (this.state.players[owner].resources < cost) return false;
 
     const spot = position ?? this.pickAutoBuildSpot(owner, buildingType);
@@ -514,6 +621,39 @@ export class Simulation {
     const entry = resolveRaceBuilding(this.state.players[owner].race, identity);
     if (!entry) return false;
     return this.constructBuilding(owner, entry.definition.archetype, position, entry.id);
+  }
+
+  /** True if some living builder is currently ordered to work on this
+   * building — sent there by constructBuilding() or resumeConstruction(),
+   * whether or not it has arrived on site yet. False for a foundation whose
+   * builder died (or was reassigned) mid-construction, which stepBuilding()
+   * will otherwise leave stalled at its current progress forever. */
+  isBuildingStaffed(buildingId: string): boolean {
+    return this.state.units.some(
+      (u) => u.type === 'builder' && u.order.type === 'build' && u.order.buildingId === buildingId,
+    );
+  }
+
+  /** Sends a free builder to continue an already-standing unfinished
+   * building — the explicit "finish this" action a script needs after its
+   * original builder dies, since stepBuilding() never reassigns one on its
+   * own. Unlike constructBuilding()/constructRaceBuilding(), this never
+   * creates a building or spends resources: constructionProgress/hp and the
+   * cost already paid are untouched, it only hands the existing foundation a
+   * new builder. Returns false if the building doesn't exist, isn't
+   * under construction, already has a builder assigned, or no builder is
+   * free to send. */
+  resumeConstruction(owner: PlayerId, buildingId: string): boolean {
+    const building = this.state.buildings.find((b) => b.id === buildingId && b.owner === owner);
+    if (!building || !building.underConstruction) return false;
+    if (this.isBuildingStaffed(building.id)) return false;
+    const builder = this.getUnits(owner, 'builder').find((u) => u.order.type !== 'build');
+    if (!builder) return false;
+    builder.order = { type: 'build', buildingId: building.id };
+    builder.gatherState = null;
+    builder.gatherTimer = 0;
+    builder.scoutWaypoint = null;
+    return true;
   }
 
   /** Every building's foundation stands on dry land — nothing in this game
@@ -685,7 +825,7 @@ export class Simulation {
     const unit = this.ownedUnit(owner, unitId);
     const target = this.state.units.find((candidate) => candidate.id === targetId)
       ?? this.state.buildings.find((candidate) => candidate.id === targetId);
-    if (!unit || !target || target.owner === owner || !this.isPositionVisibleTo(owner, target.position)) return false;
+    if (!unit || !target || this.isAlly(target.owner, owner) || !this.isPositionVisibleTo(owner, target.position)) return false;
     unit.order = { type: 'attackTarget', targetId };
     unit.gatherState = null;
     unit.gatherTimer = 0;
@@ -1214,13 +1354,18 @@ export class Simulation {
     return best;
   }
 
-  /** Whether `owner` currently has a unit or building within its own sight
-   * of `point` — the same rule updateDetection() uses for enemy detection,
-   * reused here to gate resource-node discovery (see isResourceNodeDiscovered). */
+  /** Whether `owner` — or any of owner's teammates, who share vision (see
+   * isAlly()) — currently has a unit or building within sight of `point`.
+   * The same rule updateDetection() uses for enemy detection, reused here to
+   * gate resource-node discovery (see isResourceNodeDiscovered). Every
+   * caller built on this (isBuildingVisibleTo, the discovery caches, enemy
+   * detection) gets shared team vision for free from this one check. */
   private isVisibleTo(owner: PlayerId, point: Vector2): boolean {
-    for (const e of this.allEntities(owner)) {
-      const sight = e.kind === 'unit' ? e.sight : BUILDING_SIGHT;
-      if (distance(e.position, point) <= sight) return true;
+    for (const teammate of [owner, ...this.teammatesOf(owner)]) {
+      for (const e of this.allEntities(teammate)) {
+        const sight = e.kind === 'unit' ? e.sight : BUILDING_SIGHT;
+        if (distance(e.position, point) <= sight) return true;
+      }
     }
     return false;
   }
@@ -1316,6 +1461,64 @@ export class Simulation {
     const cols = Math.max(1, Math.ceil(this.state.map.width / EXPLORATION_CELL_SIZE));
     const rows = Math.max(1, Math.ceil(this.state.map.height / EXPLORATION_CELL_SIZE));
     return this.exploredCells[owner].size / (cols * rows);
+  }
+
+  /** Fraction (0..1) of the map's terrain grid that's water — a fixed
+   * whole-map property (same answer all match), so it's computed once and
+   * cached. Lets a script tell a heavily-navat, coastal, or dry-land map
+   * apart, e.g. `if (mapWaterRatio() > 0.3) { ... prioritize a navy ... }` —
+   * see also isIsolatedByWater() for "is there even a land path to anyone".*/
+  mapWaterRatio(): number {
+    if (this.cachedWaterRatio === null) {
+      const terrain = this.state.map.terrain;
+      let waterCount = 0;
+      for (const cell of terrain) if (cell === 'water') waterCount += 1;
+      this.cachedWaterRatio = terrain.length === 0 ? 0 : waterCount / terrain.length;
+    }
+    return this.cachedWaterRatio;
+  }
+
+  /** True if there is no land-only path from `owner`'s base to any other
+   * active player's base — an "island" match for owner, where reaching
+   * anyone at all requires naval or air units, not just ground forces
+   * (unlike a map that merely has some water on it, e.g. a lake or coast,
+   * where a land army can still walk the whole way around). A fixed
+   * property of the map + active roster, found via a flood fill over land
+   * tiles from owner's base and cached per owner. */
+  isIsolatedByWater(owner: PlayerId): boolean {
+    const cached = this.cachedIsolatedByWater[owner];
+    if (cached !== undefined) return cached;
+    const map = this.state.map;
+    const cols = map.terrainCols;
+    const rows = map.terrainRows;
+    const start = worldToTile(map.bases[owner], cols, rows);
+    const startIndex = start.row * cols + start.col;
+    const reachable = new Uint8Array(cols * rows);
+    const queue: number[] = map.terrain[startIndex] === 'water' ? [] : [startIndex];
+    if (queue.length > 0) reachable[startIndex] = 1;
+    for (let head = 0; head < queue.length; head += 1) {
+      const index = queue[head];
+      const col = index % cols;
+      const row = (index / cols) | 0;
+      const neighbors = [
+        col > 0 ? index - 1 : -1,
+        col < cols - 1 ? index + 1 : -1,
+        row > 0 ? index - cols : -1,
+        row < rows - 1 ? index + cols : -1,
+      ];
+      for (const n of neighbors) {
+        if (n < 0 || reachable[n] || map.terrain[n] === 'water') continue;
+        reachable[n] = 1;
+        queue.push(n);
+      }
+    }
+    const isolated = !this.state.activePlayers.some((other) => {
+      if (other === owner) return false;
+      const tile = worldToTile(map.bases[other], cols, rows);
+      return reachable[tile.row * cols + tile.col] === 1;
+    });
+    this.cachedIsolatedByWater[owner] = isolated;
+    return isolated;
   }
 
   /** Refreshes each currently-visible enemy building into `owner`'s
@@ -1471,7 +1674,7 @@ export class Simulation {
       if (u.order.type === 'attackTarget') {
         const target = this.getEntityById(u.order.targetId);
         const targetDomain = target?.kind === 'unit' ? target.movementDomain : 'ground';
-        if (!target || target.hp <= 0 || target.owner === u.owner || !u.targetDomains.includes(targetDomain)) {
+        if (!target || target.hp <= 0 || target.owner === u.owner || !u.targetDomains.includes(targetDomain) || this.isPhaseCloaked(target)) {
           u.order = { type: 'idle' };
           continue;
         }
@@ -1487,7 +1690,8 @@ export class Simulation {
       const lockedEnemy = u.autoTargetId ? this.getEntityById(u.autoTargetId) : undefined;
       const lockedDomain = lockedEnemy?.kind === 'unit' ? lockedEnemy.movementDomain : 'ground';
       const validLock = lockedEnemy && lockedEnemy.hp > 0 && lockedEnemy.owner !== u.owner
-        && u.targetDomains.includes(lockedDomain) && distance(u.position, lockedEnemy.position) <= u.sight * 1.35;
+        && u.targetDomains.includes(lockedDomain) && distance(u.position, lockedEnemy.position) <= u.sight * 1.35
+        && !this.isPhaseCloaked(lockedEnemy);
       const nearestEnemy = u.attack > 0 && u.order.type !== 'scout'
         ? (validLock ? lockedEnemy : this.getNearestAttackableEnemy(u))
         : undefined;
@@ -1546,11 +1750,14 @@ export class Simulation {
   }
 
   private attackTick(attacker: UnitState | BuildingState, target: Entity, _dt: number): void {
+    // Ironclad's stunSlam: a stunned unit can't fire at all, mirroring the
+    // move lockout in effectiveUnitSpeed().
+    if (attacker.kind === 'unit' && attacker.stunnedUntil > this.state.time) return;
     if ((attacker.attackTimer ?? 0) > 0) return;
-    const cooldown = attacker.attackCooldown ?? 1;
+    const cooldown = attacker.kind === 'unit' ? this.effectiveAttackCooldown(attacker) : attacker.attackCooldown ?? 1;
     attacker.attackTimer = cooldown;
     const projectileKind: ProjectileKind = attacker.kind === 'unit'
-      ? RACES[attacker.race].units[attacker.raceUnitId]?.projectile ?? UNIT_STATS[attacker.type].projectileKind
+      ? RACES[attacker.race].units[attacker.raceUnitId]?.projectile ?? 'bullet'
       : RACES[attacker.race].buildings[attacker.raceBuildingId]?.projectile ?? 'shell';
     const isBallistic = BALLISTIC_PROJECTILES.has(projectileKind);
     this.state.projectiles.push({
@@ -1595,9 +1802,39 @@ export class Simulation {
     if (target.kind === 'unit') {
       const fortify = this.activeSkillDefinition(target, 'fortify');
       if (fortify) damage *= Math.max(0.1, 1 - fortify.magnitude);
+
+      // Ironclad's shieldBarrier: a flat absorb pool, drained before hp —
+      // unlike fortify's %-reduction, this can run out mid-fight.
+      if (target.shieldRemaining > 0) {
+        const absorbed = Math.min(target.shieldRemaining, damage);
+        target.shieldRemaining -= absorbed;
+        damage -= absorbed;
+      }
     }
     target.hp -= damage;
     if (target.kind === 'building') target.lastDamagedAt = this.state.time;
+
+    const attacker = this.getEntityById(projectile.sourceId);
+    if (attacker?.kind === 'unit' && attacker.hp > 0 && damage > 0) {
+      // Aether's lifeDrain: a % of the damage actually dealt (post-armor,
+      // post-shield) heals the attacker.
+      const lifeDrain = this.activeSkillDefinition(attacker, 'lifeDrain');
+      if (lifeDrain) attacker.hp = Math.min(attacker.maxHp, attacker.hp + damage * lifeDrain.magnitude);
+
+      // Nullforge's chainOverload: the same hit also splashes reduced
+      // damage to 1-2 other nearby enemies — a secondary, simplified
+      // application (no further armor-type splitting, no re-triggering
+      // shield/lifeDrain/chainOverload on the splash targets) so a chain
+      // can't cascade into itself.
+      const chainOverload = this.activeSkillDefinition(attacker, 'chainOverload');
+      if (chainOverload) {
+        const others = this.enemyEntities(attacker.owner)
+          .filter((e) => e.id !== target.id && e.hp > 0 && distance(e.position, target.position) <= 90)
+          .sort((a, b) => distance(a.position, target.position) - distance(b.position, target.position))
+          .slice(0, 2);
+        for (const other of others) other.hp -= damage * chainOverload.magnitude;
+      }
+    }
   }
 
   private explodeBallisticProjectile(projectile: ProjectileState): void {
@@ -1749,11 +1986,24 @@ export class Simulation {
     if (this.state.matchResult) return;
     // StarCraft-style elimination: losing the command center is a severe
     // economic setback, but a player remains alive while any structure is
-    // still standing. Units alone cannot prevent elimination.
+    // still standing. Units alone cannot prevent elimination. A team is
+    // eliminated only once EVERY member is — one surviving teammate keeps
+    // the whole team (and the match) alive, same as free-for-all always
+    // treated each individual player.
     const survivors = this.state.activePlayers.filter((owner) => this.getBuildings(owner).length > 0);
-    if (survivors.length > 1) return;
-    this.state.matchResult = survivors.length === 1
-      ? { winner: survivors[0], reason: `${survivors[0]} is the last command network standing` }
-      : { winner: null, reason: 'Every command network was destroyed' };
+    const survivingTeams = new Set(survivors.map((owner) => this.state.players[owner].team));
+    if (survivingTeams.size > 1) return;
+    if (survivingTeams.size === 1) {
+      const [team] = survivingTeams;
+      const winners = this.state.activePlayers.filter((owner) => this.state.players[owner].team === team);
+      const names = winners.map((owner) => this.state.players[owner].name);
+      this.state.matchResult = {
+        winners,
+        winner: winners[0] ?? null,
+        reason: `${names.join(' & ')} — last command network${winners.length > 1 ? 's' : ''} standing`,
+      };
+    } else {
+      this.state.matchResult = { winners: [], winner: null, reason: 'Every command network was destroyed' };
+    }
   }
 }

@@ -1,4 +1,4 @@
-import { PLAYER_ID_LIST, type PlayerId, type RaceId } from '../types/game';
+import { PLAYER_ID_LIST, type PlayerId, type RaceId, type SimState } from '../types/game';
 import type { StrategyConfig } from '../types/rules';
 import { Simulation } from './simulation/Simulation';
 import { RuleEngine, type RuleFireEvent } from './ai/ruleEngine';
@@ -20,6 +20,10 @@ export interface MatchControllerOptions {
   mapId?: MapId;
   activePlayers?: PlayerId[];
   strategies?: Partial<Record<PlayerId, StrategyConfig>>;
+  /** Per-seat display name/team/color chosen in the lobby — see
+   * PlayerState in types/game.ts. Team assignment is optional: an
+   * unspecified seat defaults to its own distinct team (plain FFA). */
+  lobby?: Partial<Record<PlayerId, { name?: string; team?: number; color?: number }>>;
   /** Tags any match-history record this match produces (see recordLocalMatchHistory).
    * Not known from sim/strategy state alone — it's a UI-level setting. */
   aiDifficulty?: AiDifficulty;
@@ -29,6 +33,25 @@ export interface MatchControllerOptions {
    * matches don't set this — recording your own outcome from a guest's view
    * of someone else's simulation isn't meaningful. */
   recordHistoryForPlayer?: boolean;
+  /** Additional wall-clock cap (ms) on each script's per-tick run, on top of
+   * the step-count budget — see ScriptEngine.update()/Interpreter.deadline.
+   * Set this for a networked match: up to PLAYER_ID_LIST.length players'
+   * scripts run sequentially on one thread there, so one occasional
+   * expensive-but-legitimate tick (the step budget alone doesn't catch this
+   * — see MAX_STEPS_PER_TICK in ScriptEngine.ts) delays every other player
+   * in the room, not just its own owner. Leave unset for local single-player,
+   * which has no other player's tick to protect. */
+  scriptTimeBudgetMs?: number;
+  /** Resumes a previously-saved match (see game/saveGame.ts) instead of
+   * starting fresh — `simState` seeds the Simulation itself, `phase`/
+   * `activityLog` restore this controller's own bookkeeping. Every AI
+   * engine's persistent script/rule memory still starts clean, same
+   * limitation as Simulation's own resumeState param. */
+  resume?: {
+    simState: SimState;
+    phase: MatchPhase;
+    activityLog: ActivityLogEntry[];
+  };
 }
 
 export interface ActivityLogEntry {
@@ -54,6 +77,7 @@ export class MatchController implements MatchView {
   readonly strategies: Record<PlayerId, StrategyConfig>;
   private readonly aiDifficulty: AiDifficulty | null;
   private readonly recordHistoryForPlayer: boolean;
+  private readonly scriptTimeBudgetMs: number | undefined;
   private rules = Object.fromEntries(PLAYER_ID_LIST.map((owner, index) => [
     owner,
     new RuleEngine((index * AI_TICK_INTERVAL) / PLAYER_ID_LIST.length),
@@ -64,7 +88,7 @@ export class MatchController implements MatchView {
   ])) as Record<PlayerId, ScriptEngine>;
 
   constructor(options: MatchControllerOptions) {
-    this.sim = new Simulation(options.races, options.mapId, options.activePlayers, true);
+    this.sim = new Simulation(options.races, options.mapId, options.activePlayers, true, options.lobby, options.resume?.simState);
     this.strategies = Object.fromEntries(PLAYER_ID_LIST.map((owner) => [
       owner,
       options.strategies?.[owner] ?? (owner === 'player' ? options.playerStrategy : options.enemyStrategy),
@@ -73,6 +97,11 @@ export class MatchController implements MatchView {
     this.enemyStrategy = this.strategies.enemy;
     this.aiDifficulty = options.aiDifficulty ?? null;
     this.recordHistoryForPlayer = options.recordHistoryForPlayer ?? false;
+    this.scriptTimeBudgetMs = options.scriptTimeBudgetMs;
+    if (options.resume) {
+      this.phase = options.resume.phase;
+      this.activityLog = options.resume.activityLog;
+    }
   }
 
   update(dt: number): void {
@@ -119,7 +148,7 @@ export class MatchController implements MatchView {
       return { success: false, message: 'This strategy is not in code mode.' };
     }
 
-    const events = script.triggerFunction(this.sim, owner, name);
+    const events = script.triggerFunction(this.sim, owner, name, this.scriptTimeBudgetMs);
     this.logScriptEvents(events, prefix);
     const error = events.find((e) => e.kind === 'error');
     return error ? { success: false, message: error.text } : { success: true, message: `${name}() ran.` };
@@ -139,7 +168,7 @@ export class MatchController implements MatchView {
    * 'code' script) and logs whatever it did this tick. */
   private runAi(owner: PlayerId, strategy: StrategyConfig, ruleEngine: RuleEngine, scriptEngine: ScriptEngine, dt: number, prefix: string): void {
     if (strategy.mode === 'code') {
-      const events = scriptEngine.update(this.sim, owner, strategy, dt);
+      const events = scriptEngine.update(this.sim, owner, strategy, dt, this.scriptTimeBudgetMs);
       this.logScriptEvents(events, prefix);
     } else {
       ruleEngine.update(this.sim, owner, strategy, dt);
@@ -179,7 +208,7 @@ export class MatchController implements MatchView {
     const result = this.sim.state.matchResult;
     if (!result || !this.sim.state.activePlayers.includes('player')) return;
 
-    const outcome = result.winner === 'player' ? 'win' : result.winner === null ? 'draw' : 'loss';
+    const outcome = result.winners.includes('player') ? 'win' : result.winners.length === 0 ? 'draw' : 'loss';
     const stats = this.sim.state.stats.player;
     recordMatchResult({
       race: this.sim.state.players.player.race,

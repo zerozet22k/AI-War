@@ -1,5 +1,4 @@
 import type { BuildingState, BuildingType, PlayerId, RaceId, UnitState, UnitType, Vector2 } from '../../types/game';
-import { BUILDING_STATS, UNIT_STATS } from '../constants';
 import { buildingEntryForArchetype, DEFAULT_RACE_FOR_PLAYER, RACES, unitEntryForArchetype } from '../races';
 import { makeId } from '../../utils/id';
 
@@ -10,11 +9,10 @@ export function createUnit(
   raceId: RaceId = DEFAULT_RACE_FOR_PLAYER[owner],
   raceUnitId?: string,
 ): UnitState {
-  const stats = UNIT_STATS[type];
   const race = RACES[raceId];
-  const maxHp = Math.round(stats.hp * race.modifiers.hp);
   const raceUnitIdResolved = raceUnitId ?? unitEntryForArchetype(raceId, type)?.id ?? type;
-  const skillDefinitions = race.units[raceUnitIdResolved]?.skills ?? [];
+  const definition = race.units[raceUnitIdResolved];
+  const skillDefinitions = definition?.skills ?? [];
   return {
     id: makeId('unit'),
     kind: 'unit',
@@ -23,18 +21,18 @@ export function createUnit(
     owner,
     race: raceId,
     position: { ...position },
-    hp: maxHp,
-    maxHp,
-    attack: stats.attack,
-    attackRange: stats.range,
-    attackCooldown: stats.cooldown,
+    hp: definition.hp,
+    maxHp: definition.hp,
+    attack: definition.attack,
+    attackRange: definition.range,
+    attackCooldown: definition.cooldown,
     attackTimer: 0,
-    speed: Math.round(stats.speed * race.modifiers.speed),
-    sight: Math.round(stats.sight * race.modifiers.sight),
-    damageTypes: stats.damageTypes,
-    armorType: stats.armorType,
-    movementDomain: stats.movementDomain,
-    targetDomains: [...stats.targetDomains],
+    speed: definition.speed,
+    sight: definition.sight,
+    damageTypes: definition.damageTypes,
+    armorType: definition.armorType,
+    movementDomain: definition.movementDomain,
+    targetDomains: [...definition.targetDomains],
     order: { type: 'idle' },
     gatherState: null,
     gatherTimer: 0,
@@ -46,6 +44,9 @@ export function createUnit(
     loadedInto: null,
     slowUntil: 0,
     slowMultiplier: 1,
+    power: definition.power,
+    stunnedUntil: 0,
+    shieldRemaining: 0,
   };
 }
 
@@ -57,15 +58,16 @@ export function createBuilding(
   opts: { underConstruction?: boolean } = {},
   raceBuildingId?: string,
 ): BuildingState {
-  const stats = BUILDING_STATS[type];
   const race = RACES[raceId];
-  const maxHp = Math.round(stats.hp * race.modifiers.buildingHp);
+  const raceBuildingIdResolved = raceBuildingId ?? buildingEntryForArchetype(raceId, type)?.id ?? type;
+  const definition = race.buildings[raceBuildingIdResolved];
+  const maxHp = definition.hp;
   const underConstruction = opts.underConstruction ?? false;
   return {
     id: makeId('bld'),
     kind: 'building',
     type,
-    raceBuildingId: raceBuildingId ?? buildingEntryForArchetype(raceId, type)?.id ?? type,
+    raceBuildingId: raceBuildingIdResolved,
     owner,
     race: raceId,
     position: { ...position },
@@ -75,12 +77,12 @@ export function createBuilding(
     constructionProgress: underConstruction ? 0 : 1,
     productionQueue: [],
     researchQueue: [],
-    attack: stats.attack,
-    attackRange: stats.range,
-    attackCooldown: stats.cooldown,
+    attack: definition.attack,
+    attackRange: definition.range,
+    attackCooldown: definition.cooldown,
     attackTimer: 0,
-    damageTypes: stats.damageTypes,
-    armorType: stats.armorType,
+    damageTypes: definition.damageTypes,
+    armorType: definition.armorType,
     lastDamagedAt: null,
   };
 }

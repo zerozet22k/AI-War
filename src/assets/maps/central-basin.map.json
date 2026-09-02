@@ -2,6 +2,7 @@
   "id": "central-basin",
   "name": "Central Basin",
   "description": "Armies split around a large navigable central lake while artillery contests the narrow banks.",
+  "maxPlayers": 4,
   "tileset": "frontier",
   "columns": 68,
   "rows": 68,

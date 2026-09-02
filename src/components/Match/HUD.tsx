@@ -26,15 +26,17 @@ export function HUD({ networked = false, onOpenPause, viewSide = 'player' }: HUD
   const setSimSpeed = useAppStore((s) => s.setSimSpeed);
 
   const ended = hud.matchPhase === 'ended';
-  const opponents = hud.activePlayers.filter((owner) => owner !== viewSide);
-  const opponentUnits = opponents.reduce((sum, owner) => sum + hud.unitCounts[owner], 0);
-  const opponentResources = opponents.reduce((sum, owner) => sum + hud.resources[owner], 0);
+  const myTeam = hud.players[viewSide].team;
+  // Teammates (if any) share vision/outcome and aren't "opposition" — list
+  // only the actual opposing sides here, each with its own name/color, not
+  // a single aggregated blob (see HudSnapshot.players).
+  const opponents = hud.activePlayers.filter((owner) => owner !== viewSide && hud.players[owner].team !== myTeam);
 
   return (
     <div className="hud-wrap">
       <div className="hud">
         <div className="hud__side hud__side--player">
-          <span className="hud__owner-dot hud__owner-dot--player" />
+          <span className="hud__owner-dot" style={{ backgroundColor: `#${hud.players[viewSide].color.toString(16).padStart(6, '0')}` }} />
           <span className="hud__resources">{Math.floor(hud.resources[viewSide])}</span>
           <span className="hud__label">resources</span>
           <span className="hud__divider" />
@@ -47,12 +49,12 @@ export function HUD({ networked = false, onOpenPause, viewSide = 'player' }: HUD
         </div>
 
         <div className="hud__side hud__side--enemy">
-          <span className="hud__label">units</span>
-          <span className="hud__resources">{opponentUnits}</span>
-          <span className="hud__divider" />
-          <span className="hud__label">resources</span>
-          <span className="hud__resources">{Math.floor(opponentResources)}</span>
-          <span className="hud__owner-dot hud__owner-dot--enemy" />
+          {opponents.map((owner) => (
+            <span className="hud__opponent" key={owner} title={hud.players[owner].name}>
+              <span className="hud__label">{hud.unitCounts[owner]}u / {Math.floor(hud.resources[owner])}r</span>
+              <span className="hud__owner-dot" style={{ backgroundColor: `#${hud.players[owner].color.toString(16).padStart(6, '0')}` }} />
+            </span>
+          ))}
         </div>
 
         <div className="hud-toolbar__group">

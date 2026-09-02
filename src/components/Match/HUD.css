@@ -27,6 +27,7 @@
 
 .hud__side--enemy {
   justify-content: flex-end;
+  gap: 12px;
 }
 
 .hud__owner-dot {
@@ -36,12 +37,10 @@
   flex-shrink: 0;
 }
 
-.hud__owner-dot--player {
-  background: #3b82f6;
-}
-
-.hud__owner-dot--enemy {
-  background: #ef4444;
+.hud__opponent {
+  display: flex;
+  align-items: center;
+  gap: 5px;
 }
 
 .hud__resources {

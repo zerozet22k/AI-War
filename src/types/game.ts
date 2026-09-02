@@ -40,7 +40,21 @@ export const RESEARCH_TYPE_LIST = [
 ] as const;
 export type ResearchType = (typeof RESEARCH_TYPE_LIST)[number];
 
-export type UnitSkillEffect = 'repairPulse' | 'speedBoost' | 'weaponBoost' | 'fortify' | 'slowPulse';
+export type UnitSkillEffect =
+  | 'repairPulse'
+  | 'speedBoost'
+  | 'weaponBoost'
+  | 'fortify'
+  | 'slowPulse'
+  // Race-exclusive effects — two per race, deliberately distinct engine
+  // behavior rather than reskinned numbers on the 5 above. See useUnitSkill
+  // in Simulation.ts for how each is actually implemented.
+  | 'shieldBarrier' // Ironclad: flat damage-absorb pool, consumed before hp.
+  | 'stunSlam' // Ironclad: AoE hard disable — enemies can't move or attack.
+  | 'phaseCloak' // Aether: self untargetable by enemy attacks.
+  | 'lifeDrain' // Aether: damage dealt while active heals the attacker.
+  | 'overclockSurge' // Nullforge: attack cooldown reduced (fires more often).
+  | 'chainOverload'; // Nullforge: damage dealt while active also splashes nearby.
 
 export interface UnitSkillState {
   id: string;
@@ -122,6 +136,18 @@ export interface UnitState {
    * whichever enemy unit it hit, until this game-time timestamp. */
   slowUntil: number;
   slowMultiplier: number;
+  /** relative combat value, used for "army strength" AI condition — read
+   * from the live instance so it reflects this race's own numbers, not a
+   * shared archetype table. */
+  power: number;
+  /** A 'stunSlam' skill applies this to whichever enemy unit(s) it hit —
+   * while game time is under this timestamp, the unit can neither move
+   * (effectiveUnitSpeed returns 0) nor attack (attackTick refuses to fire). */
+  stunnedUntil: number;
+  /** A 'shieldBarrier' skill sets this to a flat absorb pool on cast;
+   * dealDamage() drains it before touching hp, and it never regenerates on
+   * its own — cast the skill again once depleted. */
+  shieldRemaining: number;
 }
 
 export interface ProductionOrder {
@@ -203,9 +229,28 @@ export interface PlayerState {
   race: RaceId;
   resources: number;
   completedResearch: ResearchType[];
+  /** Real display name shown in place of the raw slot id (PlayerId is just
+   * an internal seat identifier, never meant to be user-facing text). */
+  name: string;
+  /** Same-team players share vision, can't target each other, and win/lose
+   * together (see teammatesOf()/isAlly() in Simulation.ts). Team assignment
+   * is optional, not forced: every active player defaulting to a distinct
+   * number reproduces today's plain free-for-all — teaming up only happens
+   * if a lobby explicitly gives two slots the same number. */
+  team: number;
+  /** Hex color chosen in the lobby — drives the minimap blip, projectile
+   * tint, and the per-owner sprite tint blend (see MainScene.ts). */
+  color: number;
 }
 
 export interface MatchResult {
+  /** Every surviving member of the winning team (one entry for a solo win,
+   * several for a team win), or an empty array on a draw. */
+  winners: PlayerId[];
+  /** Convenience alias for `winners[0] ?? null` — a solo (non-team) match
+   * only ever has one winner, so this is exactly as meaningful as it always
+   * was for the common case; check `winners.includes(yourSide)` instead if
+   * teams are in play. */
   winner: PlayerId | null;
   reason: string;
 }

@@ -2,6 +2,7 @@
   "id": "titan-expanse",
   "name": "Titan Expanse",
   "description": "A colossal four-front battlefield with coastal bays, a central inland sea, and distant contested crystal fields.",
+  "maxPlayers": 4,
   "tileset": "frontier",
   "columns": 160,
   "rows": 160,

@@ -96,7 +96,7 @@ describe('MatchController', () => {
       controller.update(1);
 
       controller.triggerFunction('enemy', 'greet');
-      expect(controller.activityLog.some((e) => e.message === 'Enemy AI — Script log: from enemy')).toBe(true);
+      expect(controller.activityLog.some((e) => e.message === 'Aggressor AI — Script log: from enemy')).toBe(true);
       expect(controller.activityLog.some((e) => e.message.includes('from player'))).toBe(false);
     });
   });

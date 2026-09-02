@@ -176,4 +176,27 @@
   display: flex;
   gap: 10px;
   justify-content: center;
+  flex-wrap: wrap;
+}
+
+.match-screen__save-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: stretch;
+  min-width: 320px;
+}
+
+.match-screen__save-input {
+  padding: 9px 12px;
+  color: #e5e7eb;
+  background: #0f1520;
+  border: 1px solid #2a3446;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.match-screen__save-input:focus {
+  outline: none;
+  border-color: #3b82f6;
 }

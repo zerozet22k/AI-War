@@ -1,6 +1,6 @@
 # AI WAR (Prototype)
 
-**AEVRA** — a code-vs-code RTS prototype: you write your side's AI as a small script, the built-in opponent's AI is a script too (visible and read-only once a match starts), and the two scripts fight continuously on a small symmetrical map.
+**Avera (Prototype)** — a code-vs-code RTS prototype: you write your side's AI as a small script, the built-in opponent's AI is a script too (visible and read-only once a match starts), and the two scripts fight continuously on a small symmetrical map.
 
 This repo is the standalone browser prototype, split out once active development moved to a separate Unreal Engine project. `tools/` holds scripts for an optional Blender/Hunyuan3D-2mini image-to-3D asset pipeline for that Unreal project; it isn't used by the web prototype below. `.tools/` holds the local, gitignored dependencies for that pipeline (Python venv, Blender, model weights) and isn't part of the shipped project.
 

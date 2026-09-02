@@ -15,11 +15,15 @@ const QUERIES_NUMBER: FnDoc[] = [
   { sig: 'units()', desc: 'Total unit count' },
   { sig: 'armyStrength()', desc: 'Combined combat power' },
   { sig: 'buildingCount("outpost")', desc: 'How many buildings match a race name, id, class, or archetype' },
+  { sig: 'unitCost("Lancer")', desc: 'Resource cost to train that unit' },
+  { sig: 'buildingCost("barracks")', desc: 'Resource cost to construct that building' },
+  { sig: 'researchCost("navalEngineering")', desc: 'Resource cost to research that technology' },
   { sig: 'resourcesGathered()', desc: 'Total crystals deposited this match' },
   { sig: 'unitsCreated() / unitsLost()', desc: 'Your production and casualty totals' },
   { sig: 'buildingsConstructed()', desc: 'Completed structures this match' },
   { sig: 'mapWidth() / mapHeight()', desc: 'Playable world dimensions' },
   { sig: 'mapExploredRatio()', desc: '0 to 1 — how much of the map you have ever seen' },
+  { sig: 'mapWaterRatio()', desc: '0 to 1 — how much of the whole map is water (a lake/coastal map reads high; a dry map reads near 0)' },
 ];
 
 const QUERIES_BOOL: FnDoc[] = [
@@ -28,6 +32,7 @@ const QUERIES_BOOL: FnDoc[] = [
   { sig: 'hasBuilding("barracks")', desc: 'At least one of that building exists' },
   { sig: 'buildingNear("outpost", x, y, r)', desc: 'A completed or unfinished matching building is nearby' },
   { sig: 'isWaterAt(x, y)', desc: 'Whether the map terrain at a point is water' },
+  { sig: 'isIsolatedByWater()', desc: "No land-only path exists from your base to any other active player's base — an island map for you, where reaching anyone needs naval or air units, not just ground forces" },
   { sig: 'enemyBaseFound()', desc: "Whether a scout has ever actually seen the enemy's Command Center (enemyBaseX/Y() harmlessly fall back to your own base until then)" },
 ];
 
@@ -44,6 +49,7 @@ const ACTIONS: FnDoc[] = [
   { sig: 'gatherResources()', desc: 'Send idle Builders to gather' },
   { sig: 'mineNode(id, 3)', desc: 'Assign enough available Builders for 3 total miners at a covered crystal node' },
   { sig: 'expandToNode(id)', desc: 'Build your race Outpost at a valid position covering a discovered crystal node' },
+  { sig: 'resumeConstruction(id)', desc: 'Send a free Builder to finish an existing unfinished building — e.g. after its builder died. Preserves progress, does not charge cost again' },
   { sig: 'defendCommandCenter()', desc: 'Hold position around HQ' },
   { sig: 'attackNearestEnemy()', desc: 'Attack the closest enemy' },
   { sig: 'attackEnemyCommandCenter()', desc: "Attack the enemy's HQ" },
@@ -91,6 +97,7 @@ const UNIT_GROUPS: FnDoc[] = [
   { sig: 'unitCargo(id)', desc: 'Crystals currently carried by a Builder' },
   { sig: 'unitHealthRatio(id)', desc: 'Health from 0 to 1, avoiding manual HP arithmetic' },
   { sig: 'unitOrder(id) / unitDomain(id)', desc: 'Current order and movement domain strings' },
+  { sig: 'unitTarget(id)', desc: 'Id of the enemy this unit is currently engaging in combat, or an empty string' },
   { sig: 'unitIsIdle(id) / unitIsGathering(id)', desc: 'Convenient unit-state checks' },
   { sig: 'unitSkills(id)', desc: 'List of race-defined skill ids available to that unit' },
   { sig: 'unitSkillReady(id, skillId)', desc: 'Whether a skill can activate now' },
@@ -124,10 +131,13 @@ const BUILDINGS_AND_NODES: FnDoc[] = [
   { sig: 'buildingHp(id) / buildingMaxHp(id)', desc: "A building's current and maximum health" },
   { sig: 'buildingProgress(id)', desc: 'Construction progress from 0 to 1' },
   { sig: 'buildingUnderConstruction(id)', desc: 'Whether construction is still in progress' },
+  { sig: 'buildingHasBuilder(id)', desc: 'Whether a Builder is currently assigned to an unfinished building — false means its builder died and resumeConstruction(id) is needed' },
   { sig: 'buildingHealthRatio(id)', desc: 'Building health from 0 to 1' },
   { sig: 'buildingQueueLength(id)', desc: 'Number of units queued at this building' },
   { sig: 'buildingProductionProgress(id)', desc: 'Current production progress from 0 to 1' },
   { sig: 'buildingResearchProgress(id)', desc: 'Current research progress from 0 to 1' },
+  { sig: 'buildingAttack(id) / buildingAttackRange(id)', desc: "A defensive building's (e.g. a turret) attack damage and range" },
+  { sig: 'productionQueue(id)', desc: 'Race-unit ids queued at this building, in order — index 0 is currently in progress' },
   {
     sig: 'resourceNodesNear(x, y, r)',
     desc: "Scouted resource nodes within radius r — a node only appears once you've seen it",

@@ -1,6 +1,8 @@
 node_modules
 .tools/
 dist
+dist-electron
+release
 .DS_Store
 Thumbs.db
 *.local

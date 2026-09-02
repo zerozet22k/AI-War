@@ -2,6 +2,7 @@
   "id": "broken-coast",
   "name": "Broken Coast",
   "description": "A large land war beneath a reusable naval coast, with three bays creating natural defensive flanks.",
+  "maxPlayers": 4,
   "tileset": "frontier",
   "columns": 80,
   "rows": 80,

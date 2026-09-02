@@ -4,13 +4,11 @@ import { RACES, buildingName, unitEntryForArchetype, unitName } from '../../game
 import { ProgressBar } from '../shared/ProgressBar';
 import {
   RESEARCH_BY_BUILDING,
-  RESEARCH_COSTS,
   RESEARCH_DESCRIPTION,
   RESEARCH_DURATION,
   RESEARCH_NAME,
   RESEARCH_PREREQUISITE,
   RESOURCE_GARRISON_RADIUS,
-  UNIT_COSTS,
   UNIT_RESEARCH_REQUIREMENT,
   UNITS_PRODUCED_BY,
 } from '../../game/constants';
@@ -223,7 +221,7 @@ export function SelectedEntityPanel({ mySide = 'player' }: SelectedEntityPanelPr
                   <div className={`selected-entity-panel__option${locked ? ' selected-entity-panel__option--locked' : ''}`} key={id}>
                     <div className="selected-entity-panel__option-title">
                       <strong>{unit.name}</strong>
-                      <span>{UNIT_COSTS[unitType]} crystals</span>
+                      <span>{unit.cost} crystals</span>
                     </div>
                     <p>
                       {unit.class}
@@ -246,7 +244,7 @@ export function SelectedEntityPanel({ mySide = 'player' }: SelectedEntityPanelPr
                   ? '✓ Completed'
                   : locked
                     ? '🔒 Locked'
-                    : `${RESEARCH_COSTS[research]} · ${RESEARCH_DURATION[research]}s`;
+                    : `${RACES[entity.race].researchCosts[research]} · ${RESEARCH_DURATION[research]}s`;
                 return (
                 <div
                   className={`selected-entity-panel__option${done ? ' selected-entity-panel__option--done' : ''}${locked ? ' selected-entity-panel__option--locked' : ''}`}

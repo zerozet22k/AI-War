@@ -38,12 +38,14 @@
   width: fit-content;
 }
 
-.mp-lobby > .race-picker {
-  margin-bottom: 18px;
-  padding: 14px;
-  background: #101722;
+.mp-lobby__race-select {
+  padding: 8px 10px;
+  color: #e5e7eb;
+  background: #0f1520;
   border: 1px solid #2a3446;
-  border-radius: 9px;
+  border-radius: 6px;
+  font-size: 13px;
+  min-width: 200px;
 }
 
 .mp-lobby__map-picker {
@@ -168,14 +170,16 @@
 
 .mp-lobby__players {
   display: grid;
-  width: min(420px, 100%);
+  width: min(560px, 100%);
   gap: 8px;
 }
 
 .mp-lobby__player {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
-  gap: 16px;
+  align-items: center;
+  gap: 10px 16px;
   padding: 10px 12px;
   background: #0f1520;
   border: 1px solid #2a3446;
@@ -199,4 +203,137 @@
   height: 26px;
   object-fit: contain;
   filter: drop-shadow(0 2px 3px rgb(0 0 0 / 55%));
+}
+
+.mp-lobby__player-team {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #8190a5;
+  font-size: 11px;
+}
+
+.mp-lobby__player-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.mp-lobby__player--empty {
+  color: #64748b;
+  font-style: italic;
+}
+
+.mp-lobby__empty-state {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.mp-lobby__race-select--row {
+  min-width: 140px;
+}
+
+.mp-lobby__ready,
+.mp-lobby__ready-badge {
+  padding: 5px 11px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.mp-lobby__ready {
+  color: #cbd5e1;
+  background: #111925;
+  border: 1px solid #2a3446;
+  cursor: pointer;
+}
+
+.mp-lobby__ready--on,
+.mp-lobby__ready-badge--on {
+  color: #052e1a;
+  background: #34d399;
+  border-color: #34d399;
+}
+
+.mp-lobby__ready-badge {
+  color: #8190a5;
+  background: transparent;
+  border: 1px solid #2a3446;
+}
+
+.mp-lobby__add-ai {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  width: min(560px, 100%);
+  padding: 10px 12px;
+  background: #0f1520;
+  border: 1px dashed #2a3446;
+  border-radius: 6px;
+}
+
+.mp-lobby__difficulty-options {
+  display: flex;
+  gap: 6px;
+}
+
+.mp-lobby__difficulty-option {
+  padding: 6px 10px;
+  color: #d8e0eb;
+  background: #111925;
+  border: 1px solid #2a3446;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.mp-lobby__difficulty-option--selected {
+  border-color: #60a5fa;
+  background: #15243a;
+  color: #fff;
+}
+
+.mp-lobby__lan-games {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(560px, 100%);
+  margin-bottom: 18px;
+}
+
+.mp-lobby__lan-games-label {
+  color: #cbd5e1;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.mp-lobby__lan-game {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: #101722;
+  border: 1px solid #2a3446;
+  border-radius: 8px;
+  color: #e5e7eb;
+  cursor: pointer;
+  text-align: left;
+}
+
+.mp-lobby__lan-game:hover:not(:disabled) {
+  border-color: #3b82f6;
+}
+
+.mp-lobby__lan-game strong {
+  color: #60a5fa;
+}
+
+.mp-lobby__lan-game span {
+  color: #8190a5;
+  font-size: 12px;
 }

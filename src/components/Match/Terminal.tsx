@@ -160,7 +160,7 @@ export function Terminal({ controller, mySide, syncToLocalStrategy, open, onClos
   useEffect(() => {
     if (!open) return;
     setLines([]);
-    print('system', `AEVRA terminal — ${controller.sim.state.players[mySide].race} — type "help" to get started.`);
+    print('system', `AVERA terminal — ${controller.sim.state.players[mySide].race} — type "help" to get started.`);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 

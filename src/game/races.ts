@@ -1,4 +1,4 @@
-import type { BuildingType, PlayerId, ProjectileKind, RaceId, UnitSkillEffect, UnitType } from '../types/game';
+import type { ArmorType, BuildingType, DamageType, MovementDomain, PlayerId, ProjectileKind, RaceId, ResearchType, UnitSkillEffect, UnitType } from '../types/game';
 import ironcladManifest from '../assets/races/ironclad/ironclad.race.json';
 import aetherManifest from '../assets/races/aether/aether.race.json';
 import nullforgeManifest from '../assets/races/nullforge/nullforge.race.json';
@@ -24,9 +24,25 @@ export interface RaceUnitDefinition {
   /** Optional cinematic info-card art, relative to the race asset directory. */
   portrait?: string;
   animation: UnitAnimationClass;
-  /** Race-specific weapon visual/audio; falls back to the archetype default. */
-  projectile?: ProjectileKind;
+  projectile: ProjectileKind;
   skills?: RaceUnitSkillDefinition[];
+  // --- Independent combat/economy stats — every race carries its own real
+  // numbers for these, not a shared archetype base times a multiplier. Only
+  // `archetype` above stays shared: it's the cross-race role tag the
+  // scripting API (train("soldier")) and UI rely on, not a power source. ---
+  hp: number;
+  attack: number;
+  range: number;
+  cooldown: number;
+  speed: number;
+  sight: number;
+  /** relative combat value, used for the "army strength" AI condition. */
+  power: number;
+  damageTypes: DamageType[];
+  armorType: ArmorType;
+  movementDomain: MovementDomain;
+  targetDomains: MovementDomain[];
+  cost: number;
 }
 
 export interface RaceUnitSkillDefinition {
@@ -46,7 +62,15 @@ export interface RaceBuildingDefinition {
   archetype: BuildingType;
   size: number;
   asset: string;
+  /** Only turrets (and any other attack-capable building) carry these. */
   projectile?: ProjectileKind;
+  hp: number;
+  attack?: number;
+  range?: number;
+  cooldown?: number;
+  damageTypes?: DamageType[];
+  armorType: ArmorType;
+  cost: number;
 }
 
 export interface RaceConfig {
@@ -56,9 +80,13 @@ export interface RaceConfig {
   emblem: string;
   portrait: string;
   colors: { primary: number; dark: number; accent: number; projectile: number };
-  modifiers: { hp: number; speed: number; sight: number; buildingHp: number };
   units: Record<string, RaceUnitDefinition>;
   buildings: Record<string, RaceBuildingDefinition>;
+  /** Same real-numbers-not-a-shared-table rule as unit/building stats —
+   * every race prices research independently. Research itself (name,
+   * description, duration, prerequisites, which lab type researches it)
+   * stays shared across races; only the crystal cost varies. */
+  researchCosts: Record<ResearchType, number>;
   animations: Record<UnitAnimationClass, AnimationDefinition<UnitAnimationState>>;
   buildingAnimations: AnimationDefinition<BuildingAnimationState>;
 }

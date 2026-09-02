@@ -2,10 +2,11 @@ import twinSeas from '../assets/maps/twin-seas.map.json';
 import centralBasin from '../assets/maps/central-basin.map.json';
 import brokenCoast from '../assets/maps/broken-coast.map.json';
 import titanExpanse from '../assets/maps/titan-expanse.map.json';
+import shatteredIsles from '../assets/maps/shattered-isles.map.json';
 import frontierTileset from '../assets/tiles/frontier/frontier.tileset.json';
 import type { PlayerId, TerrainType } from '../types/game';
 
-export type MapId = 'twin-seas' | 'central-basin' | 'broken-coast' | 'titan-expanse';
+export type MapId = 'twin-seas' | 'central-basin' | 'broken-coast' | 'titan-expanse' | 'shattered-isles';
 export type TerrainTilesetId = 'frontier';
 
 export interface MapFeature {
@@ -23,6 +24,11 @@ export interface MapPack {
   id: MapId;
   name: string;
   description: string;
+  /** How many active sides this map is actually designed for (2-4) — every
+   * map still defines all 4 physical base corners for engine uniformity
+   * (see mapGen.ts), but the lobby caps slot counts to this so a map not
+   * built for a crowded 4-way fight isn't offered as one. */
+  maxPlayers: number;
   tileset: TerrainTilesetId;
   columns: number;
   rows: number;
@@ -50,6 +56,7 @@ export const MAPS: Record<MapId, MapPack> = {
   'central-basin': centralBasin as MapPack,
   'broken-coast': brokenCoast as MapPack,
   'titan-expanse': titanExpanse as MapPack,
+  'shattered-isles': shatteredIsles as MapPack,
 };
 
 export const MAP_ID_LIST = Object.keys(MAPS) as MapId[];

@@ -1,11 +1,13 @@
 import { useEffect } from 'react';
 import { useAppStore } from './state/store';
 import { MainMenu } from './components/MainMenu/MainMenu';
+import { Lobby } from './components/Lobby/Lobby';
 import { StrategyEditor } from './components/StrategyEditor/StrategyEditor';
 import { MatchScreen } from './components/Match/MatchScreen';
 import { KeybindEditor } from './components/Match/KeybindEditor';
 import { MultiplayerLobby } from './components/Multiplayer/MultiplayerLobby';
 import { ApiReferencePage } from './components/ApiReference/ApiReferencePage';
+import { LoadGame } from './components/LoadGame/LoadGame';
 import './App.css';
 
 export default function App() {
@@ -32,7 +34,7 @@ export default function App() {
         restoringGuard = false;
         return;
       }
-      const confirmed = window.confirm('Leave AEVRA? Unsaved code or the current match may be lost.');
+      const confirmed = window.confirm('Leave AVERA? Unsaved code or the current match may be lost.');
       if (confirmed) {
         leavingIntentionally = true;
         window.removeEventListener('beforeunload', beforeUnload);
@@ -54,11 +56,13 @@ export default function App() {
   return (
     <div className="app">
       {screen === 'menu' && <MainMenu />}
+      {screen === 'lobby' && <Lobby />}
       {screen === 'strategyEditor' && <StrategyEditor />}
       {screen === 'match' && <MatchScreen />}
       {screen === 'settings' && <KeybindEditor onClose={() => goTo('menu')} />}
       {screen === 'multiplayerLobby' && <MultiplayerLobby />}
       {screen === 'apiReference' && <ApiReferencePage />}
+      {screen === 'loadGame' && <LoadGame />}
     </div>
   );
 }

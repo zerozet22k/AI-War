@@ -6,12 +6,16 @@ import { buildScriptApi } from './api';
 import type { Program } from './ast';
 import { compile } from './compiler';
 import type { ScriptError } from './errors';
-import { CallDepthExceededError, Interpreter, ScriptRuntimeError, StepBudgetExceededError, type Value } from './interpreter';
+import { CallDepthExceededError, Interpreter, ScriptRuntimeError, StepBudgetExceededError, TimeBudgetExceededError, type Value } from './interpreter';
 
 // This is only a runaway-script fuse, not a competitive execution quota.
 // A large doctrine can inspect sizeable armies and resource networks without
 // being penalized, while an accidental infinite loop still cannot hang the UI.
-const MAX_STEPS_PER_TICK = 100_000;
+// Raised 10x from the original 100_000: sophisticated per-unit threat-aware
+// pathing (many units re-evaluating routes against many visible enemies in
+// the same tick, during a real fight) legitimately needs more headroom than
+// that at scale — a deliberate CPU-for-AI-quality tradeoff, not a bug fix.
+const MAX_STEPS_PER_TICK = 1_000_000;
 
 export interface ScriptEvent {
   kind: 'action' | 'log' | 'error';
@@ -53,7 +57,13 @@ export class ScriptEngine {
     return Object.fromEntries(this.interpreter.scope);
   }
 
-  update(sim: Simulation, owner: PlayerId, strategy: StrategyConfig, dt: number): ScriptEvent[] {
+  /** `deadlineMs`, if given, additionally bounds this run's wall-clock time
+   * (see Interpreter.deadline) — pass it for a networked match, where one
+   * player's tick sharing a thread with up to three others makes an
+   * occasional expensive-but-legitimate run (see MAX_STEPS_PER_TICK above)
+   * a fairness problem, not just a that-player's-own-match problem. Omit it
+   * for local single-player, which has no other player's tick to protect. */
+  update(sim: Simulation, owner: PlayerId, strategy: StrategyConfig, dt: number, deadlineMs?: number): ScriptEvent[] {
     if (strategy.code !== this.compiledSource) {
       this.recompile(strategy.code);
     }
@@ -81,7 +91,7 @@ export class ScriptEngine {
     });
 
     try {
-      this.interpreter.runProgram(this.program, api, MAX_STEPS_PER_TICK);
+      this.interpreter.runProgram(this.program, api, MAX_STEPS_PER_TICK, deadlineMs);
       this.lastLoggedError = null;
       return events;
     } catch (err) {
@@ -92,8 +102,9 @@ export class ScriptEngine {
   /** Runs one of the script's own top-level functions immediately, outside
    * the normal per-tick pass — e.g. because the player pressed a bound key.
    * Always reports its own errors (no dedup — a keypress is a deliberate,
-   * one-off action, not a recurring per-tick check). */
-  triggerFunction(sim: Simulation, owner: PlayerId, name: string): ScriptEvent[] {
+   * one-off action, not a recurring per-tick check). See update() for
+   * `deadlineMs`. */
+  triggerFunction(sim: Simulation, owner: PlayerId, name: string, deadlineMs?: number): ScriptEvent[] {
     if (!this.program) {
       return [{ kind: 'error', text: `Can't run "${name}()" — your script doesn't compile.` }];
     }
@@ -110,7 +121,7 @@ export class ScriptEngine {
     });
 
     try {
-      this.interpreter.callNamed(name, [], api, MAX_STEPS_PER_TICK);
+      this.interpreter.callNamed(name, [], api, MAX_STEPS_PER_TICK, deadlineMs);
       return events;
     } catch (err) {
       return [...events, { kind: 'error', text: this.describeError(err) }];
@@ -119,7 +130,7 @@ export class ScriptEngine {
 
   private describeError(err: unknown): string {
     if (err instanceof ScriptRuntimeError) return `Script error (line ${err.pos.line}): ${err.message}`;
-    if (err instanceof StepBudgetExceededError || err instanceof CallDepthExceededError) return `Script error: ${err.message}`;
+    if (err instanceof StepBudgetExceededError || err instanceof CallDepthExceededError || err instanceof TimeBudgetExceededError) return `Script error: ${err.message}`;
     return `Script error: ${(err as Error).message}`;
   }
 

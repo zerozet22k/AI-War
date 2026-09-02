@@ -1,6 +1,6 @@
 # Adding maps and terrain tiles
 
-AEVRA maps are data packs. Runtime terrain, rendering, pathfinding, bases,
+AVERA maps are data packs. Runtime terrain, rendering, pathfinding, bases,
 resources, camera bounds and multiplayer snapshots all read the same map.
 
 ## Add a map

@@ -5,7 +5,11 @@ import { compile } from './compiler';
 import { ScriptEngine } from './ScriptEngine';
 import { ADVANCED_EXAMPLE_SCRIPT, DEFAULT_SCRIPT } from './examples';
 import type { StrategyConfig } from '../../../types/rules';
-import { UNIT_COSTS } from '../../constants';
+import { RACES } from '../../races';
+
+// `new Simulation()` defaults the 'player' seat to ironclad — its builder,
+// the fabricator, is what these cost assertions are checking against.
+const IRONCLAD_BUILDER_COST = RACES.ironclad.units.fabricator.cost;
 
 function strategyWithCode(code: string): StrategyConfig {
   return { id: 's1', name: 'test', mode: 'code', rules: [], code };
@@ -37,7 +41,7 @@ describe('ScriptEngine', () => {
     const engine = new ScriptEngine();
     const strategy = strategyWithCode('train("builder");');
 
-    const events = engine.update(sim, 'player', strategy, 0.1);
+    const events = engine.update(sim, 'player', strategy, 0.02);
     expect(events).toHaveLength(0);
     expect(sim.getResources('player')).toBe(200);
   });
@@ -49,7 +53,7 @@ describe('ScriptEngine', () => {
 
     const events = engine.update(sim, 'player', strategy, 1);
     expect(events).toEqual([{ kind: 'action', text: 'Training Builder' }]);
-    expect(sim.getResources('player')).toBe(200 - UNIT_COSTS.builder);
+    expect(sim.getResources('player')).toBe(200 - IRONCLAD_BUILDER_COST);
   });
 
   it('train/construct/unitCount/hasBuilding are generic over the type name — no fixed function per type', () => {
@@ -93,7 +97,7 @@ describe('ScriptEngine', () => {
     const events = engine.update(sim, 'player', strategy, 1);
     expect(events).toHaveLength(1);
     expect(events[0].kind).toBe('error');
-    expect(events[0].text).toMatch(/unknown unit type/i);
+    expect(events[0].text).toMatch(/unknown .* unit/i);
   });
 
   it('persists top-level variables across ticks', () => {
@@ -301,7 +305,7 @@ describe('unit groups', () => {
     const strategy = strategyWithCode(`
       let found = unitsNear(${cc.position.x}, ${cc.position.y}, 50);
       for (id in found) {
-        if (unitType(id) == "soldier") {
+        if (unitClass(id) == "infantry") {
           log(unitHp(id));
         }
       }
@@ -338,12 +342,12 @@ describe('unit groups', () => {
     sim.state.units.push(enemyUnit);
 
     const engine = new ScriptEngine();
-    const strategy = strategyWithCode(`
-      let seen = enemyUnitsNear(${enemyCC.position.x}, ${enemyCC.position.y}, 50);
-      for (id in seen) {
-        log(moveUnitTo(id, 0, 0));
-      }
-    `);
+    // The id is embedded directly (not discovered via enemyUnitsNear()) since
+    // this test is specifically about the ownership gate on moveUnitTo() —
+    // a script having somehow learned an enemy unit's id (e.g. from an
+    // earlier tick while it was visible) must still never be able to command
+    // it, regardless of how the id was obtained.
+    const strategy = strategyWithCode(`log(moveUnitTo("${enemyUnit.id}", 0, 0));`);
 
     const events = engine.update(sim, 'player', strategy, 1);
     expect(events).toEqual([{ kind: 'log', text: 'false' }]);
@@ -403,7 +407,7 @@ describe('unit groups', () => {
       let found = myBuildingsNear(${cc.position.x}, ${cc.position.y}, 100);
       log(count(found));
       for (id in found) {
-        if (buildingType(id) == "barracks") {
+        if (buildingClass(id) == "barracks") {
           log(buildingX(id));
         }
       }
@@ -418,10 +422,16 @@ describe('unit groups', () => {
 
   it('only discovers a resource node once it has actually been scouted', () => {
     const sim = new Simulation();
-    const farNode = sim.state.map.resourceNodes[2]; // one of the nodes next to the enemy's base — nowhere near the player's start
+    const farNode = sim.state.map.resourceNodes[6]; // one of the nodes next to the enemy's base — nowhere near the player's start
     // Nothing of the player's is anywhere near this node yet.
     const engine = new ScriptEngine();
-    const notYetScouted = strategyWithCode(`log(count(resourceNodesNear(${farNode.position.x}, ${farNode.position.y}, 10000)));`);
+    // radius=50, not "the whole map" — resourceNodesNear() only filters
+    // candidates by distance, not by whether they're near THIS point once
+    // already discovered by some other means, so an overly large radius
+    // would also match any other node the player happens to already know
+    // about (e.g. one within its own starting vision), defeating the point
+    // of this test.
+    const notYetScouted = strategyWithCode(`log(count(resourceNodesNear(${farNode.position.x}, ${farNode.position.y}, 50)));`);
     const before = engine.update(sim, 'player', notYetScouted, 1);
     expect(before).toEqual([{ kind: 'log', text: '0' }]);
 
@@ -431,7 +441,7 @@ describe('unit groups', () => {
     sim.step(1); // runs updateResourceDiscovery()
 
     const afterScoutStrategy = strategyWithCode(`
-      let nodes = resourceNodesNear(${farNode.position.x}, ${farNode.position.y}, 10000);
+      let nodes = resourceNodesNear(${farNode.position.x}, ${farNode.position.y}, 50);
       log(count(nodes));
       for (id in nodes) {
         log(nodeRemaining(id));
